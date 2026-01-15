@@ -148,6 +148,49 @@ app.post("/sp/register", async (req, res) => {
   }
 });
 
+// GROUP -> Grupo_Telegram (evento personalizado)
+app.post("/sp/group", async (req, res) => {
+  try {
+    console.log("🔥 /sp/group WEBHOOK RECEBIDO");
+    console.log("🕒", new Date().toISOString());
+    console.log("📦 BODY:", JSON.stringify(req.body, null, 2));
+
+    const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
+
+    const leadId = vars.lead_id || crypto.randomUUID();
+    const event_id = `${leadId}_group`;
+
+    const event = {
+      event_name: "Grupo_Telegram",
+      event_time: Math.floor(Date.now() / 1000),
+      action_source: "chat",
+      event_id,
+      user_data: {
+        fbp: vars.fbp || undefined,
+        fbc: vars.fbc || undefined,
+        external_id: sha256(telegram_id) || undefined,
+      },
+      custom_data: {
+        lead_id: leadId,
+        telegram_id,
+        utm_source: vars.utm_source,
+        utm_medium: vars.utm_medium,
+        utm_campaign: vars.utm_campaign,
+        utm_content: vars.utm_content,
+        fbclid: vars.fbclid,
+      },
+    };
+
+    const metaResp = await sendToMeta(event);
+    console.log("✅ Meta OK:", JSON.stringify(metaResp));
+
+    res.json({ ok: true, meta: metaResp });
+  } catch (err) {
+    console.error("❌ /sp/group ERROR:", err?.message || err);
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
+  }
+});
+
 // Start
 const port = process.env.PORT || 10000;
 app.listen(port, () => {
