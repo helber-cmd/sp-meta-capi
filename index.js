@@ -21,7 +21,10 @@ function getItem(body) {
 
 function extractVarsAndTelegramId(body) {
   const item = getItem(body);
-  const vars = item?.contact?.variables || item?.contact?.last_message_data?.message?.tracking_data?.contact_variables || {};
+  const vars =
+    item?.contact?.variables ||
+    item?.contact?.last_message_data?.message?.tracking_data?.contact_variables ||
+    {};
   const telegram_id =
     item?.contact?.telegram_id ||
     item?.contact?.last_message_data?.chat_id ||
@@ -32,7 +35,9 @@ function extractVarsAndTelegramId(body) {
 
 async function sendToMeta(event) {
   if (!PIXEL_ID || !ACCESS_TOKEN) {
-    throw new Error("Missing META_PIXEL_ID or META_ACCESS_TOKEN in environment variables.");
+    throw new Error(
+      "Missing META_PIXEL_ID or META_ACCESS_TOKEN in environment variables."
+    );
   }
 
   const url = `https://graph.facebook.com/v20.0/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`;
@@ -53,7 +58,7 @@ app.get("/", (req, res) => {
   res.status(200).send("OK");
 });
 
-// LEAD
+// LEAD -> Lead_Telegram (evento personalizado)
 app.post("/sp/lead", async (req, res) => {
   try {
     console.log("🔥 /sp/lead WEBHOOK RECEBIDO");
@@ -66,7 +71,7 @@ app.post("/sp/lead", async (req, res) => {
     const event_id = `${leadId}_lead`;
 
     const event = {
-      event_name: "Lead",
+      event_name: "Lead_Telegram",
       event_time: Math.floor(Date.now() / 1000),
       action_source: "chat",
       event_id,
@@ -92,11 +97,13 @@ app.post("/sp/lead", async (req, res) => {
     res.json({ ok: true, meta: metaResp });
   } catch (err) {
     console.error("❌ /sp/lead ERROR:", err?.message || err);
-    res.status(500).json({ ok: false, error: String(err?.message || err) });
+    res
+      .status(500)
+      .json({ ok: false, error: String(err?.message || err) });
   }
 });
 
-// REGISTER (quando enviar print / confirmação)
+// REGISTER -> Registro_Casa (evento personalizado)
 app.post("/sp/register", async (req, res) => {
   try {
     console.log("🔥 /sp/register WEBHOOK RECEBIDO");
@@ -109,7 +116,7 @@ app.post("/sp/register", async (req, res) => {
     const event_id = `${leadId}_register`;
 
     const event = {
-      event_name: "CompleteRegistration",
+      event_name: "Registro_Casa",
       event_time: Math.floor(Date.now() / 1000),
       action_source: "chat",
       event_id,
@@ -135,7 +142,9 @@ app.post("/sp/register", async (req, res) => {
     res.json({ ok: true, meta: metaResp });
   } catch (err) {
     console.error("❌ /sp/register ERROR:", err?.message || err);
-    res.status(500).json({ ok: false, error: String(err?.message || err) });
+    res
+      .status(500)
+      .json({ ok: false, error: String(err?.message || err) });
   }
 });
 
