@@ -49,6 +49,15 @@ const EVENT_MAP = {
       produto: "bilhete_mgm",
     },
   },
+
+  // ✅ NOVO EVENTO
+  bilhete_novibet: {
+    event_name: "Bilhete_Novibet",
+    extra_custom_data: {
+      origem: "telegram",
+      produto: "bilhete_novibet",
+    },
+  },
 };
 
 // =========================
@@ -66,7 +75,6 @@ function normalizeEmail(email) {
 }
 
 // Normalização recomendada p/ telefone: só dígitos
-// (ideal: salvar no funil já com DDI, ex: 55..., mas aqui a gente "limpa" o que vier)
 function normalizePhone(phone) {
   if (!phone) return "";
   return String(phone).replace(/\D+/g, "");
@@ -156,9 +164,6 @@ function buildUserData({ vars, telegram_id, req }) {
   const client_user_agent = getUserAgent(req) || undefined;
 
   // ====== OPCIONAIS (se você coletar no funil)
-  // Aceita variações comuns pra facilitar replicar:
-  // email: email, em, user_email
-  // phone: phone, ph, telefone, tel, user_phone
   const rawEmail =
     vars.email || vars.em || vars.user_email || vars.userEmail || "";
   const rawPhone =
@@ -176,7 +181,6 @@ function buildUserData({ vars, telegram_id, req }) {
   const em = emNorm ? sha256(emNorm) : undefined;
   const ph = phNorm ? sha256(phNorm) : undefined;
 
-  // Monta objeto final, SEM mandar campos vazios
   const user_data = {
     fbp,
     fbc,
@@ -241,12 +245,6 @@ function resolveEventKey(req, extracted) {
 // =========================
 app.get("/", (req, res) => res.status(200).send("OK"));
 
-// ✅ ROTA ÚNICA MULTI-EVENTO
-// Chamar assim no SendPulse:
-// https://SEU-APP.onrender.com/sp/event?e=lead_telegram
-// https://SEU-APP.onrender.com/sp/event?e=registro_casa
-// https://SEU-APP.onrender.com/sp/event?e=grupo_telegram
-// https://SEU-APP.onrender.com/sp/event?e=bilhete_mgm
 app.post("/sp/event", async (req, res) => {
   try {
     console.log("🔥 /sp/event WEBHOOK RECEBIDO");
@@ -297,7 +295,6 @@ app.post("/sp/event", async (req, res) => {
 
 // =========================
 // Rotas de compatibilidade (opcional)
-// Mantidas para não quebrar nada caso algum funil antigo use.
 // =========================
 async function compatHandler(req, res, key) {
   try {
@@ -346,6 +343,9 @@ app.post("/sp/group", (req, res) =>
   compatHandler(req, res, "grupo_telegram")
 );
 app.post("/sp/bilhete", (req, res) => compatHandler(req, res, "bilhete_mgm"));
+
+// (Opcional) se você quiser uma rota antiga específica pra novibet, descomente:
+// app.post("/sp/bilhete-novibet", (req, res) => compatHandler(req, res, "bilhete_novibet"));
 
 // Start
 const port = process.env.PORT || 10000;
