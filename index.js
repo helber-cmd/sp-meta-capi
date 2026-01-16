@@ -33,11 +33,19 @@ function extractVarsAndTelegramId(body) {
   return { item, vars, telegram_id: String(telegram_id) };
 }
 
+// pega o IP real atrás do proxy (Render)
+function getClientIp(req) {
+  const xfwd = req.headers["x-forwarded-for"];
+  if (typeof xfwd === "string" && xfwd.length > 0) {
+    return xfwd.split(",")[0].trim();
+  }
+  // fallback (nem sempre vem preenchido)
+  return req.socket?.remoteAddress;
+}
+
 async function sendToMeta(event) {
   if (!PIXEL_ID || !ACCESS_TOKEN) {
-    throw new Error(
-      "Missing META_PIXEL_ID or META_ACCESS_TOKEN in environment variables."
-    );
+    throw new Error("Missing META_PIXEL_ID or META_ACCESS_TOKEN in environment variables.");
   }
 
   const url = `https://graph.facebook.com/v20.0/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`;
@@ -51,6 +59,43 @@ async function sendToMeta(event) {
   const json = await res.json();
   if (!res.ok) throw new Error(JSON.stringify(json));
   return json;
+}
+
+// factory pra evitar repetição e padronizar user_data/event_id
+function buildEvent({ event_name, event_suffix, req, vars, telegram_id, custom_data_extra = {} }) {
+  const leadId = vars.lead_id || crypto.randomUUID();
+
+  // dedupe melhor (nome do evento embutido)
+  const event_id = `${leadId}_${event_suffix}`;
+
+  const client_user_agent = req.headers["user-agent"];
+  const client_ip_address = getClientIp(req);
+
+  return {
+    event_name,
+    event_time: Math.floor(Date.now() / 1000),
+    action_source: "chat",
+    event_id,
+    user_data: {
+      fbp: vars.fbp || undefined,
+      fbc: vars.fbc || undefined,
+      external_id: sha256(telegram_id) || undefined,
+
+      // melhora MUITO o match rate (principal ganho)
+      client_user_agent: client_user_agent || undefined,
+      client_ip_address: client_ip_address || undefined,
+    },
+    custom_data: {
+      lead_id: leadId,
+      telegram_id,
+      utm_source: vars.utm_source,
+      utm_medium: vars.utm_medium,
+      utm_campaign: vars.utm_campaign,
+      utm_content: vars.utm_content,
+      fbclid: vars.fbclid,
+      ...custom_data_extra,
+    },
+  };
 }
 
 // -------- routes ----------
@@ -67,29 +112,13 @@ app.post("/sp/lead", async (req, res) => {
 
     const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
 
-    const leadId = vars.lead_id || crypto.randomUUID();
-    const event_id = `${leadId}_lead`;
-
-    const event = {
+    const event = buildEvent({
       event_name: "Lead_Telegram",
-      event_time: Math.floor(Date.now() / 1000),
-      action_source: "chat",
-      event_id,
-      user_data: {
-        fbp: vars.fbp || undefined,
-        fbc: vars.fbc || undefined,
-        external_id: sha256(telegram_id) || undefined,
-      },
-      custom_data: {
-        lead_id: leadId,
-        telegram_id,
-        utm_source: vars.utm_source,
-        utm_medium: vars.utm_medium,
-        utm_campaign: vars.utm_campaign,
-        utm_content: vars.utm_content,
-        fbclid: vars.fbclid,
-      },
-    };
+      event_suffix: "Lead_Telegram",
+      req,
+      vars,
+      telegram_id,
+    });
 
     const metaResp = await sendToMeta(event);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
@@ -97,9 +126,7 @@ app.post("/sp/lead", async (req, res) => {
     res.json({ ok: true, meta: metaResp });
   } catch (err) {
     console.error("❌ /sp/lead ERROR:", err?.message || err);
-    res
-      .status(500)
-      .json({ ok: false, error: String(err?.message || err) });
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
   }
 });
 
@@ -112,29 +139,13 @@ app.post("/sp/register", async (req, res) => {
 
     const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
 
-    const leadId = vars.lead_id || crypto.randomUUID();
-    const event_id = `${leadId}_register`;
-
-    const event = {
+    const event = buildEvent({
       event_name: "Registro_Casa",
-      event_time: Math.floor(Date.now() / 1000),
-      action_source: "chat",
-      event_id,
-      user_data: {
-        fbp: vars.fbp || undefined,
-        fbc: vars.fbc || undefined,
-        external_id: sha256(telegram_id) || undefined,
-      },
-      custom_data: {
-        lead_id: leadId,
-        telegram_id,
-        utm_source: vars.utm_source,
-        utm_medium: vars.utm_medium,
-        utm_campaign: vars.utm_campaign,
-        utm_content: vars.utm_content,
-        fbclid: vars.fbclid,
-      },
-    };
+      event_suffix: "Registro_Casa",
+      req,
+      vars,
+      telegram_id,
+    });
 
     const metaResp = await sendToMeta(event);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
@@ -142,9 +153,7 @@ app.post("/sp/register", async (req, res) => {
     res.json({ ok: true, meta: metaResp });
   } catch (err) {
     console.error("❌ /sp/register ERROR:", err?.message || err);
-    res
-      .status(500)
-      .json({ ok: false, error: String(err?.message || err) });
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
   }
 });
 
@@ -157,29 +166,13 @@ app.post("/sp/group", async (req, res) => {
 
     const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
 
-    const leadId = vars.lead_id || crypto.randomUUID();
-    const event_id = `${leadId}_group`;
-
-    const event = {
+    const event = buildEvent({
       event_name: "Grupo_Telegram",
-      event_time: Math.floor(Date.now() / 1000),
-      action_source: "chat",
-      event_id,
-      user_data: {
-        fbp: vars.fbp || undefined,
-        fbc: vars.fbc || undefined,
-        external_id: sha256(telegram_id) || undefined,
-      },
-      custom_data: {
-        lead_id: leadId,
-        telegram_id,
-        utm_source: vars.utm_source,
-        utm_medium: vars.utm_medium,
-        utm_campaign: vars.utm_campaign,
-        utm_content: vars.utm_content,
-        fbclid: vars.fbclid,
-      },
-    };
+      event_suffix: "Grupo_Telegram",
+      req,
+      vars,
+      telegram_id,
+    });
 
     const metaResp = await sendToMeta(event);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
@@ -200,31 +193,17 @@ app.post("/sp/bilhete", async (req, res) => {
 
     const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
 
-    const leadId = vars.lead_id || crypto.randomUUID();
-    const event_id = `${leadId}_bilhete_mgm`;
-
-    const event = {
+    const event = buildEvent({
       event_name: "Bilhete_MGM",
-      event_time: Math.floor(Date.now() / 1000),
-      action_source: "chat",
-      event_id,
-      user_data: {
-        fbp: vars.fbp || undefined,
-        fbc: vars.fbc || undefined,
-        external_id: sha256(telegram_id) || undefined,
-      },
-      custom_data: {
-        lead_id: leadId,
-        telegram_id,
+      event_suffix: "Bilhete_MGM",
+      req,
+      vars,
+      telegram_id,
+      custom_data_extra: {
         origem: "telegram",
         produto: "bilhete_mgm",
-        utm_source: vars.utm_source,
-        utm_medium: vars.utm_medium,
-        utm_campaign: vars.utm_campaign,
-        utm_content: vars.utm_content,
-        fbclid: vars.fbclid,
       },
-    };
+    });
 
     const metaResp = await sendToMeta(event);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
