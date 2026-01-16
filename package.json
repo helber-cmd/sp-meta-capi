@@ -2,6 +2,11 @@
   "name": "sp-meta-capi",
   "version": "1.0.0",
   "type": "module",
+  "description": "Meta Conversions API multi-evento integrado com SendPulse e Telegram",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "express": "^4.19.2",
     "node-fetch": "^3.3.2"
