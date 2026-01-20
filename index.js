@@ -58,6 +58,14 @@ const EVENT_MAP = {
       produto: "bilhete_novibet",
     },
   },
+ // ✅ NOVO EVENTO
+  bilhete_vupibet: {
+    event_name: "Bilhete_Vupibet",
+    extra_custom_data: {
+      origem: "telegram",
+      produto: "bilhete_vupibet",
+    },
+  },
 };
 
 // =========================
