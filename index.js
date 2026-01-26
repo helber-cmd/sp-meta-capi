@@ -1,17 +1,56 @@
-// index.js — sp-meta-capi (100% multi-evento) — UPGRADE (IP + UA + trust proxy + email/phone opcional + SMARTICO value/currency)
-// ✅ 1 rota principal: /sp/event  (SendPulse)
-// ✅ Rotas de compatibilidade: /sp/lead, /sp/register, /sp/group, /sp/bilhete
-// ✅ SMARTICO: /smartico/postback (GET) -> envia Registro_vupibet, ftd_vupibet, qftd_vupibet, deposito_vupibet
-// ✅ Melhor match: client_ip_address + client_user_agent
-// ✅ User data extra (opcional): em / ph (se existir no SendPulse)
-// ✅ Dedupe forte: event_id = lead_id + event_name
+// index.js — sp-meta-capi (100% multi-evento) — FULL + REVISADO
+// =====================================================================
+// ✅ ATUALIZAÇÕES (TOPO — sempre manter aqui)
+// 1) ✅ ROTA ÚNICA SendPulse -> Meta: POST /sp/event?e=CHAVE_DO_EVENTO
+// 2) ✅ Rotas de compatibilidade (não quebrar funis antigos):
+//    - POST /sp/lead      -> lead_telegram
+//    - POST /sp/register  -> registro_casa
+//    - POST /sp/group     -> grupo_telegram
+//    - POST /sp/bilhete   -> bilhete_mgm
+// 3) ✅ Melhor Match Quality (Meta CAPI):
+//    - app.set("trust proxy", true) (Render)
+//    - user_data.client_ip_address + user_data.client_user_agent
+// 4) ✅ Atribuição correta nas campanhas:
+//    - fbp + fbc SEMPRE em user_data (não só em custom_data)
+// 5) ✅ Identificador consistente (match id forte):
+//    - SendPulse: external_id = hash(telegram_id)
+//    - Smartico: external_id = hash(click_id | afp | customer_id)
+// 6) ✅ DEDUPE forte:
+//    - SendPulse: event_id = lead_id + event_name
+//    - Smartico: event_id = registration_id (ou click_id) + event_name
+// 7) ✅ User data extra opcional (SendPulse):
+//    - em/ph (se existir nas variáveis do contato) com normalização + hash
+// 8) ✅ Smartico -> Meta (GET /smartico/postback):
+//    - Mapeia ev=registro|ftd|qftd|deposito -> nomes Meta desejados
+//    - Converte value corretamente: value | first_deposit_amount | deposit
+//
+// ✅ EVENTOS ATIVOS (TOPO — para referência rápida)
+// SendPulse (/sp/event?e=...)
+// - lead_telegram         -> Lead_Telegram
+// - registro_casa         -> Registro_Casa
+// - grupo_telegram        -> Grupo_Telegram
+// - bilhete_mgm           -> Bilhete_MGM
+// - bilhete_novibet       -> Bilhete_Novibet
+// - bilhete_vupibet       -> Bilhete_Vupibet
+// - lead_whatsapp         -> Lead_Whatsapp            ✅ NOVO
+// - lead_comunidadewpp    -> Lead_ComunidadeWPP       ✅ NOVO
+//
+// Smartico (/smartico/postback?ev=...)
+// - registro              -> Registro_vupibet
+// - ftd                   -> ftd_vupibet
+// - qftd                  -> qftd_vupibet
+// - deposito              -> deposito_vupibet
+// =====================================================================
 
 import express from "express";
 import crypto from "crypto";
 import fetch from "node-fetch";
 
 const app = express();
+
+// IMPORTANT: atrás do Render/proxy, isso melhora req.ip e headers
 app.set("trust proxy", true);
+
 app.use(express.json({ limit: "2mb" }));
 
 const PIXEL_ID = process.env.META_PIXEL_ID;
@@ -24,6 +63,7 @@ const DEFAULT_ACTION_SOURCE = process.env.META_ACTION_SOURCE || "chat";
 // EVENTOS (SendPulse -> Meta)
 // =========================
 const EVENT_MAP = {
+  // ---------- TELEGRAM ----------
   lead_telegram: {
     event_name: "Lead_Telegram",
     extra_custom_data: {},
@@ -48,11 +88,20 @@ const EVENT_MAP = {
     event_name: "Bilhete_Vupibet",
     extra_custom_data: { origem: "telegram", produto: "bilhete_vupibet" },
   },
+
+  // ---------- WHATSAPP ----------
+  lead_whatsapp: {
+    event_name: "Lead_Whatsapp",
+    extra_custom_data: { origem: "whatsapp" },
+  },
+  lead_comunidadewpp: {
+    event_name: "Lead_ComunidadeWPP",
+    extra_custom_data: { origem: "whatsapp", etapa: "comunidade" },
+  },
 };
 
 // =========================
 // EVENTOS (Smartico -> Meta)
-// (ev=registro|ftd|qftd|deposito)
 // =========================
 const SMARTICO_EVENT_MAP = {
   registro: "Registro_vupibet",
@@ -62,7 +111,7 @@ const SMARTICO_EVENT_MAP = {
 };
 
 // =========================
-// Helpers base
+// Helpers
 // =========================
 function sha256(str) {
   if (!str) return undefined;
@@ -87,13 +136,11 @@ function parseValue(v) {
   return Number.isFinite(n) ? n : undefined;
 }
 
-// Normalização recomendada p/ hashing de email (trim + lower)
 function normalizeEmail(email) {
   if (!email) return "";
   return String(email).trim().toLowerCase();
 }
 
-// Normalização recomendada p/ telefone: só dígitos
 function normalizePhone(phone) {
   if (!phone) return "";
   return String(phone).replace(/\D+/g, "");
@@ -203,6 +250,8 @@ function buildUserDataFromSendPulse({ vars, telegram_id, req }) {
 function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
   const leadId = vars.lead_id || crypto.randomUUID();
   const event_name = cfg.event_name;
+
+  // Dedupe forte
   const event_id = `${leadId}_${event_name}`;
 
   return {
@@ -214,11 +263,13 @@ function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
     custom_data: {
       lead_id: leadId,
       telegram_id,
+
       utm_source: vars.utm_source,
       utm_medium: vars.utm_medium,
       utm_campaign: vars.utm_campaign,
       utm_content: vars.utm_content,
       fbclid: vars.fbclid,
+
       ...(cfg.extra_custom_data || {}),
     },
   };
@@ -258,7 +309,7 @@ app.post("/sp/event", async (req, res) => {
         error: "EVENT_NOT_MAPPED",
         received_key: key,
         known_keys: known,
-        hint: "Use /sp/event?e=lead_telegram (ou outro), ou garanta que o body.title venha como lead_telegram.",
+        hint: "Use /sp/event?e=lead_whatsapp (ou outro), ou garanta que o body.title venha como lead_whatsapp.",
       });
     }
 
@@ -288,7 +339,7 @@ app.post("/sp/event", async (req, res) => {
 });
 
 // =========================
-// Rotas de compatibilidade (SendPulse antigo)
+// Compatibilidade (funis antigos SendPulse)
 // =========================
 async function compatHandler(req, res, key) {
   try {
@@ -327,13 +378,14 @@ async function compatHandler(req, res, key) {
   }
 }
 
+// Rotas antigas (mantidas)
 app.post("/sp/lead", (req, res) => compatHandler(req, res, "lead_telegram"));
 app.post("/sp/register", (req, res) => compatHandler(req, res, "registro_casa"));
 app.post("/sp/group", (req, res) => compatHandler(req, res, "grupo_telegram"));
 app.post("/sp/bilhete", (req, res) => compatHandler(req, res, "bilhete_mgm"));
 
 // =========================
-// ✅ SMARTICO -> META (FIX atribuição)
+// SMARTICO -> META (GET)
 // =========================
 app.get("/smartico/postback", async (req, res) => {
   try {
@@ -355,20 +407,16 @@ app.get("/smartico/postback", async (req, res) => {
       });
     }
 
-    // event_time: se Smartico mandar unix epoch (segundos) a gente usa, senão "agora"
     const smarticoTime =
       parseInt(String(q.registration_date || q.first_deposit_date || ""), 10) || 0;
     const event_time = smarticoTime > 0 ? smarticoTime : Math.floor(Date.now() / 1000);
 
-    // ✅ Dedupe: preferir registration_id, senão click_id
     const baseId = cleanStr(q.registration_id) || cleanStr(q.click_id) || crypto.randomUUID();
     const event_id = `${baseId}_${metaEventName}`;
 
-    // ✅ FIX PRINCIPAL: fbp/fbc em user_data (não em custom_data)
     const fbp = cleanStr(q.fbp);
     const fbc = cleanStr(q.fbc);
 
-    // external_id: hash do click_id (ou afp), fallback customer_id
     const extSeed = cleanStr(q.click_id) || cleanStr(q.afp) || cleanStr(q.customer_id) || "";
     const external_id = extSeed ? sha256(extSeed) : undefined;
 
@@ -385,6 +433,7 @@ app.get("/smartico/postback", async (req, res) => {
       action_source: "website",
       event_id,
 
+      // ✅ fbp/fbc em user_data para atribuição
       user_data: {
         client_ip_address: cleanStr(getClientIp(req)),
         client_user_agent: cleanStr(getUserAgent(req)),
@@ -430,7 +479,7 @@ app.get("/smartico/postback", async (req, res) => {
 
         fbclid: cleanStr(q.fbclid),
 
-        // ✅ Valor para ftd/qftd/deposito
+        // ✅ valor convertido
         value: value ?? undefined,
         currency,
       },
