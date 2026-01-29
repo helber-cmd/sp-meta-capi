@@ -758,13 +758,6 @@ app.get("/smartico/postback", async (req, res) => {
         utm_content,
         afp: cleanStr(q.afp),
         afp1: cleanStr(q.afp1),
-        afp2: cleanStr(q.afp2),
-        afp3: cleanStr(q.afp3),
-        afp4: cleanStr(q.afp4),
-        afp5: cleanStr(q.afp5),
-        afp6: cleanStr(q.afp6),
-        afp7: cleanStr(q.afp7),
-        afp8: cleanStr(q.afp8),
         afp9: cleanStr(q.afp9),
         fbclid,
         // ✅ valor convertido
