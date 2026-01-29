@@ -105,7 +105,7 @@ const EVENT_MAP = {
 };
 
 // =========================
-// EVENTOS (Smartico -> Meta)
+// EVENTOS (Smartico -> Meta) - Vupibet
 // =========================
 const SMARTICO_EVENT_MAP = {
   registro: "Registro_vupibet",
@@ -115,8 +115,30 @@ const SMARTICO_EVENT_MAP = {
 };
 
 // =========================
+// EVENTOS (Novibet -> Meta)
+// =========================
+const NOVIBET_EVENT_MAP = {
+  registro: "Registro_novibet",
+  deposito: "deposito_novibet",
+  ftd: "ftd_novibet",
+};
+
+// =========================
 // Helpers
 // =========================
+
+/**
+ * Valida se o valor é um UUID v4 válido (formato do nosso lead_id).
+ * Usado para filtrar eventos que vieram do nosso funil vs outros experts.
+ */
+function isValidUUID(value) {
+  if (!value || typeof value !== 'string') return false;
+  // Regex para UUID v4: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+  // onde y é 8, 9, a ou b
+  const uuidV4Regex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidV4Regex.test(value);
+}
+
 function sha256(str) {
   if (!str) return undefined;
   return crypto.createHash("sha256").update(String(str)).digest("hex");
@@ -515,8 +537,25 @@ app.get("/smartico/postback", async (req, res) => {
       });
     }
 
-    // ✅ ENRIQUECIMENTO: Buscar contexto salvo pelo afp (click_id)
+    // ✅ FILTRO DE QUALIDADE: Verificar se afp é UUID válido (nosso lead_id)
     const afpKey = cleanStr(q.afp) || cleanStr(q.click_id) || cleanStr(q.afp1) || "";
+    const isOurLead = isValidUUID(afpKey);
+    
+    if (!isOurLead) {
+      console.log("🚫 [FILTRO] afp não é UUID válido, ignorando evento:", afpKey || "(vazio)");
+      console.log("📋 [FILTRO] Evento de outro expert, retornando OK sem enviar para Meta");
+      return res.json({
+        ok: true,
+        filtered: true,
+        reason: "afp_not_valid_uuid",
+        afp: afpKey || null,
+        hint: "Evento ignorado pois afp não é um UUID válido do nosso funil"
+      });
+    }
+    
+    console.log("✅ [FILTRO] afp é UUID válido, processando evento:", afpKey);
+    
+    // ✅ ENRIQUECIMENTO: Buscar contexto salvo pelo afp (click_id)
     const savedContext = await getLeadContextByAfp(afpKey);
     const hasContext = !!savedContext;
     
@@ -632,6 +671,234 @@ app.get("/smartico/postback", async (req, res) => {
 });
 
 // Start
+
+// =========================
+// NOVIBET -> META (POST)
+// =========================
+
+/**
+ * Endpoint para Registro da Novibet
+ * URL: POST /novibet/registro
+ * Parâmetros esperados (body ou query):
+ * - t1: click_id (nosso lead_id/afp)
+ * - registration_id: ID do registro na Novibet
+ * - country_code: código do país (opcional)
+ * - brand: identificador da marca (opcional)
+ * - currency: moeda (opcional, default BRL)
+ * - timestamp: Unix timestamp (opcional)
+ */
+app.post("/novibet/registro", async (req, res) => {
+  try {
+    console.log("🔥 /novibet/registro RECEBIDO");
+    console.log("🕒", new Date().toISOString());
+    console.log("📦 Body:", JSON.stringify(req.body || {}));
+    console.log("🔎 Query:", JSON.stringify(req.query || {}));
+
+    // Novibet pode enviar via body ou query
+    const data = { ...req.query, ...req.body };
+    
+    // t1 é o click_id da Novibet (nosso lead_id/afp)
+    const afpKey = cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
+    
+    // Validar se é UUID válido (nosso lead)
+    if (!isValidUUID(afpKey)) {
+      console.log("🚫 [NOVIBET] t1 não é UUID válido, ignorando:", afpKey || "(vazio)");
+      return res.json({
+        ok: true,
+        filtered: true,
+        reason: "t1_not_valid_uuid",
+        t1: afpKey || null,
+      });
+    }
+
+    console.log("✅ [NOVIBET] t1 é UUID válido, processando registro:", afpKey);
+
+    // Buscar contexto salvo
+    const savedContext = await getLeadContextByAfp(afpKey);
+    const hasContext = !!savedContext;
+    
+    console.log("📊 [MATCH]", hasContext ? "Contexto encontrado no banco" : "Usando dados do postback (fallback)");
+
+    const metaEventName = NOVIBET_EVENT_MAP.registro;
+    const event_time = parseInt(data.timestamp) || Math.floor(Date.now() / 1000);
+    const baseId = cleanStr(data.registration_id) || afpKey || crypto.randomUUID();
+    const event_id = `${baseId}_${metaEventName}`;
+
+    // Prioridade: banco > postback
+    const fbp = cleanStr(savedContext?.fbp) || cleanStr(data.fbp);
+    const fbc = cleanStr(savedContext?.fbc) || cleanStr(data.fbc);
+    const fbclid = cleanStr(savedContext?.fbclid) || cleanStr(data.fbclid);
+    const external_id = afpKey ? sha256(afpKey) : undefined;
+
+    const utm_source = cleanStr(savedContext?.utm_source) || cleanStr(data.utm_source);
+    const utm_medium = cleanStr(savedContext?.utm_medium) || cleanStr(data.utm_medium);
+    const utm_campaign = cleanStr(savedContext?.utm_campaign) || cleanStr(data.utm_campaign);
+    const utm_content = cleanStr(savedContext?.utm_content) || cleanStr(data.utm_content);
+
+    const client_ip = cleanStr(savedContext?.client_ip_address) || cleanStr(getClientIp(req));
+    const client_ua = cleanStr(savedContext?.client_user_agent) || cleanStr(getUserAgent(req));
+
+    const event = {
+      event_name: metaEventName,
+      event_time,
+      action_source: "website",
+      event_id,
+      user_data: {
+        client_ip_address: client_ip,
+        client_user_agent: client_ua,
+        external_id,
+        fbp,
+        fbc,
+      },
+      custom_data: {
+        origem: "novibet",
+        context_matched: hasContext,
+        registration_id: cleanStr(data.registration_id),
+        country_code: cleanStr(data.country_code),
+        brand: cleanStr(data.brand),
+        currency: cleanStr(data.currency) || "BRL",
+        t1: afpKey,
+        utm_source,
+        utm_medium,
+        utm_campaign,
+        utm_content,
+        fbclid,
+      },
+    };
+
+    console.log("🚀 Enviando Novibet Registro -> Meta:", JSON.stringify(event, null, 2));
+    const metaResp = await sendToMeta(event);
+    console.log("✅ Meta OK:", JSON.stringify(metaResp));
+
+    res.json({
+      ok: true,
+      event_type: "registro",
+      event_name: metaEventName,
+      event_id,
+      context_matched: hasContext,
+      meta: metaResp,
+    });
+  } catch (err) {
+    console.error("❌ /novibet/registro ERROR:", err?.message || err);
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
+  }
+});
+
+/**
+ * Endpoint para Depósito da Novibet
+ * URL: POST /novibet/deposito
+ * Parâmetros esperados (body ou query):
+ * - t1: click_id (nosso lead_id/afp)
+ * - registration_id: ID do registro na Novibet
+ * - value: valor do depósito
+ * - currency: moeda (opcional, default BRL)
+ * - country_code: código do país (opcional)
+ * - brand: identificador da marca (opcional)
+ * - timestamp: Unix timestamp (opcional)
+ * - is_ftd: se é primeiro depósito (opcional, para diferenciar FTD de depósito normal)
+ */
+app.post("/novibet/deposito", async (req, res) => {
+  try {
+    console.log("🔥 /novibet/deposito RECEBIDO");
+    console.log("🕒", new Date().toISOString());
+    console.log("📦 Body:", JSON.stringify(req.body || {}));
+    console.log("🔎 Query:", JSON.stringify(req.query || {}));
+
+    const data = { ...req.query, ...req.body };
+    
+    const afpKey = cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
+    
+    if (!isValidUUID(afpKey)) {
+      console.log("🚫 [NOVIBET] t1 não é UUID válido, ignorando:", afpKey || "(vazio)");
+      return res.json({
+        ok: true,
+        filtered: true,
+        reason: "t1_not_valid_uuid",
+        t1: afpKey || null,
+      });
+    }
+
+    console.log("✅ [NOVIBET] t1 é UUID válido, processando depósito:", afpKey);
+
+    const savedContext = await getLeadContextByAfp(afpKey);
+    const hasContext = !!savedContext;
+    
+    console.log("📊 [MATCH]", hasContext ? "Contexto encontrado no banco" : "Usando dados do postback (fallback)");
+
+    // Determinar se é FTD ou depósito normal
+    const isFtd = data.is_ftd === "true" || data.is_ftd === true || data.status === "ftd";
+    const metaEventName = isFtd ? NOVIBET_EVENT_MAP.ftd : NOVIBET_EVENT_MAP.deposito;
+    
+    const event_time = parseInt(data.timestamp) || Math.floor(Date.now() / 1000);
+    const baseId = cleanStr(data.registration_id) || afpKey || crypto.randomUUID();
+    const event_id = `${baseId}_${metaEventName}_${event_time}`;
+
+    const fbp = cleanStr(savedContext?.fbp) || cleanStr(data.fbp);
+    const fbc = cleanStr(savedContext?.fbc) || cleanStr(data.fbc);
+    const fbclid = cleanStr(savedContext?.fbclid) || cleanStr(data.fbclid);
+    const external_id = afpKey ? sha256(afpKey) : undefined;
+
+    const utm_source = cleanStr(savedContext?.utm_source) || cleanStr(data.utm_source);
+    const utm_medium = cleanStr(savedContext?.utm_medium) || cleanStr(data.utm_medium);
+    const utm_campaign = cleanStr(savedContext?.utm_campaign) || cleanStr(data.utm_campaign);
+    const utm_content = cleanStr(savedContext?.utm_content) || cleanStr(data.utm_content);
+
+    const client_ip = cleanStr(savedContext?.client_ip_address) || cleanStr(getClientIp(req));
+    const client_ua = cleanStr(savedContext?.client_user_agent) || cleanStr(getUserAgent(req));
+
+    const value = parseValue(data.value) ?? parseValue(data.amount) ?? parseValue(data.deposit_amount);
+    const currency = cleanStr(data.currency) || "BRL";
+
+    const event = {
+      event_name: metaEventName,
+      event_time,
+      action_source: "website",
+      event_id,
+      user_data: {
+        client_ip_address: client_ip,
+        client_user_agent: client_ua,
+        external_id,
+        fbp,
+        fbc,
+      },
+      custom_data: {
+        origem: "novibet",
+        context_matched: hasContext,
+        is_ftd: isFtd,
+        registration_id: cleanStr(data.registration_id),
+        country_code: cleanStr(data.country_code),
+        brand: cleanStr(data.brand),
+        value: value ?? undefined,
+        currency,
+        t1: afpKey,
+        utm_source,
+        utm_medium,
+        utm_campaign,
+        utm_content,
+        fbclid,
+      },
+    };
+
+    console.log("🚀 Enviando Novibet Depósito -> Meta:", JSON.stringify(event, null, 2));
+    const metaResp = await sendToMeta(event);
+    console.log("✅ Meta OK:", JSON.stringify(metaResp));
+
+    res.json({
+      ok: true,
+      event_type: isFtd ? "ftd" : "deposito",
+      event_name: metaEventName,
+      event_id,
+      context_matched: hasContext,
+      value,
+      currency,
+      meta: metaResp,
+    });
+  } catch (err) {
+    console.error("❌ /novibet/deposito ERROR:", err?.message || err);
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
+  }
+});
+
 const port = process.env.PORT || 10000;
 app.listen(port, () => {
   console.log(`🚀 sp-meta-capi listening on port ${port}`);
