@@ -45,6 +45,10 @@
 import express from "express";
 import crypto from "crypto";
 import fetch from "node-fetch";
+import { PrismaClient } from "@prisma/client";
+
+// Prisma Client (singleton)
+const prisma = new PrismaClient();
 
 const app = express();
 
@@ -205,6 +209,90 @@ async function sendToMeta(event) {
 }
 
 // =========================
+// Persistência de Contexto (Prisma)
+// =========================
+
+/**
+ * Salva o contexto do lead no banco de dados.
+ * Usa upsert para atualizar se já existir (mesmo lead_id).
+ * Falha silenciosa: se o banco falhar, loga e continua.
+ */
+async function saveLeadContext(data) {
+  try {
+    const { lead_id, afp, fbp, fbc, fbclid, utm_source, utm_medium, utm_campaign, utm_content, client_ip_address, client_user_agent } = data;
+
+    if (!lead_id) {
+      console.warn("⚠️ [saveLeadContext] lead_id ausente, não salvando.");
+      return null;
+    }
+
+    const saved = await prisma.leadContext.upsert({
+      where: { lead_id },
+      update: {
+        afp: afp || undefined,
+        fbp: fbp || undefined,
+        fbc: fbc || undefined,
+        fbclid: fbclid || undefined,
+        utm_source: utm_source || undefined,
+        utm_medium: utm_medium || undefined,
+        utm_campaign: utm_campaign || undefined,
+        utm_content: utm_content || undefined,
+        client_ip_address: client_ip_address || undefined,
+        client_user_agent: client_user_agent || undefined,
+      },
+      create: {
+        lead_id,
+        afp: afp || undefined,
+        fbp: fbp || undefined,
+        fbc: fbc || undefined,
+        fbclid: fbclid || undefined,
+        utm_source: utm_source || undefined,
+        utm_medium: utm_medium || undefined,
+        utm_campaign: utm_campaign || undefined,
+        utm_content: utm_content || undefined,
+        client_ip_address: client_ip_address || undefined,
+        client_user_agent: client_user_agent || undefined,
+      },
+    });
+
+    console.log("✅ [saveLeadContext] Contexto salvo:", { lead_id, afp: saved.afp });
+    return saved;
+  } catch (err) {
+    console.error("❌ [saveLeadContext] Erro ao salvar (continuando):", err?.message || err);
+    return null;
+  }
+}
+
+/**
+ * Busca o contexto do lead pelo campo afp (click_id).
+ * Retorna null se não encontrar ou se o banco falhar.
+ */
+async function getLeadContextByAfp(afp) {
+  try {
+    if (!afp) {
+      console.warn("⚠️ [getLeadContextByAfp] afp ausente, não buscando.");
+      return null;
+    }
+
+    const context = await prisma.leadContext.findFirst({
+      where: { afp },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (context) {
+      console.log("✅ [getLeadContextByAfp] Contexto encontrado:", { afp, lead_id: context.lead_id });
+    } else {
+      console.log("ℹ️ [getLeadContextByAfp] Nenhum contexto encontrado para afp:", afp);
+    }
+
+    return context;
+  } catch (err) {
+    console.error("❌ [getLeadContextByAfp] Erro ao buscar (continuando):", err?.message || err);
+    return null;
+  }
+}
+
+// =========================
 // Build (SendPulse -> Meta)
 // =========================
 function buildUserDataFromSendPulse({ vars, telegram_id, req }) {
@@ -325,11 +413,31 @@ app.post("/sp/event", async (req, res) => {
     const metaResp = await sendToMeta(event);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
 
+    // ✅ PERSISTÊNCIA: Salvar contexto do lead no banco (não bloqueia resposta)
+    const vars = extracted.vars;
+    const leadId = vars.lead_id || event.custom_data?.lead_id;
+    const afpValue = vars.afp || vars.click_id || vars.afp1 || "";
+    
+    saveLeadContext({
+      lead_id: leadId,
+      afp: afpValue,
+      fbp: vars.fbp,
+      fbc: vars.fbc,
+      fbclid: vars.fbclid,
+      utm_source: vars.utm_source,
+      utm_medium: vars.utm_medium,
+      utm_campaign: vars.utm_campaign,
+      utm_content: vars.utm_content,
+      client_ip_address: getClientIp(req),
+      client_user_agent: getUserAgent(req),
+    }).catch((e) => console.error("❌ [saveLeadContext] Falha async:", e?.message));
+
     res.json({
       ok: true,
       key,
       event_name: event.event_name,
       event_id: event.event_id,
+      context_saved: !!leadId,
       meta: metaResp,
     });
   } catch (err) {
@@ -407,6 +515,13 @@ app.get("/smartico/postback", async (req, res) => {
       });
     }
 
+    // ✅ ENRIQUECIMENTO: Buscar contexto salvo pelo afp (click_id)
+    const afpKey = cleanStr(q.afp) || cleanStr(q.click_id) || cleanStr(q.afp1) || "";
+    const savedContext = await getLeadContextByAfp(afpKey);
+    const hasContext = !!savedContext;
+    
+    console.log("📊 [MATCH]", hasContext ? "Contexto encontrado no banco" : "Usando dados da query (fallback)");
+
     const smarticoTime =
       parseInt(String(q.registration_date || q.first_deposit_date || ""), 10) || 0;
     const event_time = smarticoTime > 0 ? smarticoTime : Math.floor(Date.now() / 1000);
@@ -414,8 +529,10 @@ app.get("/smartico/postback", async (req, res) => {
     const baseId = cleanStr(q.registration_id) || cleanStr(q.click_id) || crypto.randomUUID();
     const event_id = `${baseId}_${metaEventName}`;
 
-    const fbp = cleanStr(q.fbp);
-    const fbc = cleanStr(q.fbc);
+    // ✅ PRIORIDADE: banco > query (fallback)
+    const fbp = cleanStr(savedContext?.fbp) || cleanStr(q.fbp);
+    const fbc = cleanStr(savedContext?.fbc) || cleanStr(q.fbc);
+    const fbclid = cleanStr(savedContext?.fbclid) || cleanStr(q.fbclid);
 
     const extSeed = cleanStr(q.click_id) || cleanStr(q.afp) || cleanStr(q.customer_id) || "";
     const external_id = extSeed ? sha256(extSeed) : undefined;
@@ -427,16 +544,26 @@ app.get("/smartico/postback", async (req, res) => {
 
     const currency = cleanStr(q.currency) || cleanStr(q.payout_currency) || "BRL";
 
+    // ✅ UTMs: prioridade banco > query
+    const utm_source = cleanStr(savedContext?.utm_source) || cleanStr(q.utm_source);
+    const utm_medium = cleanStr(savedContext?.utm_medium) || cleanStr(q.utm_medium);
+    const utm_campaign = cleanStr(savedContext?.utm_campaign) || cleanStr(q.utm_campaign);
+    const utm_content = cleanStr(savedContext?.utm_content) || cleanStr(q.utm_content);
+
+    // ✅ IP/UA: prioridade banco (original do lead) > request atual
+    const client_ip = cleanStr(savedContext?.client_ip_address) || cleanStr(getClientIp(req));
+    const client_ua = cleanStr(savedContext?.client_user_agent) || cleanStr(getUserAgent(req));
+
     const event = {
       event_name: metaEventName,
       event_time,
       action_source: "website",
       event_id,
 
-      // ✅ fbp/fbc em user_data para atribuição
+      // ✅ fbp/fbc em user_data para atribuição (enriquecido)
       user_data: {
-        client_ip_address: cleanStr(getClientIp(req)),
-        client_user_agent: cleanStr(getUserAgent(req)),
+        client_ip_address: client_ip,
+        client_user_agent: client_ua,
         external_id,
         fbp,
         fbc,
@@ -444,6 +571,7 @@ app.get("/smartico/postback", async (req, res) => {
 
       custom_data: {
         origem: "smartico",
+        context_matched: hasContext, // ✅ Flag para debug
 
         brand_name: cleanStr(q.brand_name),
         brand_id: cleanStr(q.brand_id),
@@ -461,10 +589,10 @@ app.get("/smartico/postback", async (req, res) => {
         registration_id: cleanStr(q.registration_id),
         customer_id: cleanStr(q.customer_id),
 
-        utm_source: cleanStr(q.utm_source),
-        utm_medium: cleanStr(q.utm_medium),
-        utm_campaign: cleanStr(q.utm_campaign),
-        utm_content: cleanStr(q.utm_content),
+        utm_source,
+        utm_medium,
+        utm_campaign,
+        utm_content,
 
         afp: cleanStr(q.afp),
         afp1: cleanStr(q.afp1),
@@ -477,7 +605,7 @@ app.get("/smartico/postback", async (req, res) => {
         afp8: cleanStr(q.afp8),
         afp9: cleanStr(q.afp9),
 
-        fbclid: cleanStr(q.fbclid),
+        fbclid,
 
         // ✅ valor convertido
         value: value ?? undefined,
@@ -489,7 +617,14 @@ app.get("/smartico/postback", async (req, res) => {
     const metaResp = await sendToMeta(event);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
 
-    res.json({ ok: true, ev: evKey, event_name: metaEventName, event_id, meta: metaResp });
+    res.json({ 
+      ok: true, 
+      ev: evKey, 
+      event_name: metaEventName, 
+      event_id, 
+      context_matched: hasContext,
+      meta: metaResp 
+    });
   } catch (err) {
     console.error("❌ /smartico/postback ERROR:", err?.message || err);
     res.status(500).json({ ok: false, error: String(err?.message || err) });
