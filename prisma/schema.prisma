@@ -33,5 +33,3 @@ model LeadContext {
   @@index([afp])
   @@index([createdAt])
 }
-
-
