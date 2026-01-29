@@ -5,6 +5,7 @@
   "description": "Meta Conversions API multi-evento integrado com SendPulse e Telegram",
   "main": "index.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "build": "prisma generate",
     "start": "node index.js"
   },
