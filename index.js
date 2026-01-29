@@ -1,4 +1,4 @@
-// index.js — sp-meta-capi (100% multi-evento) — FULL + REVISADO
+
 // =====================================================================
 // ✅ ATUALIZAÇÕES (TOPO — sempre manter aqui)
 // 1) ✅ ROTA ÚNICA SendPulse -> Meta: POST /sp/event?e=CHAVE_DO_EVENTO
@@ -23,23 +23,42 @@
 // 8) ✅ Smartico -> Meta (GET /smartico/postback):
 //    - Mapeia ev=registro|ftd|qftd|deposito -> nomes Meta desejados
 //    - Converte value corretamente: value | first_deposit_amount | deposit
+// 9) ✅ FILTRO DE QUALIDADE (Smartico):
+//    - Apenas eventos com afp UUID válido são enviados para Meta
+// 10) ✅ MULTI-PIXEL:
+//    - Suporte a 5 slots + 1 pixel mestre
+//    - Pixel mestre recebe 100% dos eventos
+//    - Cada slot pode ser associado a uma casa específica
 //
 // ✅ EVENTOS ATIVOS (TOPO — para referência rápida)
-// SendPulse (/sp/event?e=...)
+// SendPulse (/sp/event?e=...&slot=X)
 // - lead_telegram         -> Lead_Telegram
 // - registro_casa         -> Registro_Casa
 // - grupo_telegram        -> Grupo_Telegram
-// - bilhete_mgm           -> Bilhete_MGM
-// - bilhete_novibet       -> Bilhete_Novibet
-// - bilhete_vupibet       -> Bilhete_Vupibet
-// - lead_whatsapp         -> Lead_Whatsapp            ✅ NOVO
-// - lead_comunidadewpp    -> Lead_ComunidadeWPP       ✅ NOVO
+// - bilhete_mgm           -> Bilhete_MGM           (slot=5)
+// - bilhete_novibet       -> Bilhete_Novibet       (slot=2)
+// - bilhete_vupibet       -> Bilhete_Vupibet       (slot=1)
+// - lead_whatsapp         -> Lead_Whatsapp
+// - lead_comunidadewpp    -> Lead_ComunidadeWPP
 //
-// Smartico (/smartico/postback?ev=...)
+// Smartico (/smartico/postback?ev=...) -> SLOT1 (Vupibet)
 // - registro              -> Registro_vupibet
 // - ftd                   -> ftd_vupibet
 // - qftd                  -> qftd_vupibet
 // - deposito              -> deposito_vupibet
+//
+// Novibet (/novibet/registro, /novibet/deposito) -> SLOT2 (Novibet)
+// - registro              -> Registro_novibet
+// - deposito              -> deposito_novibet
+// - ftd                   -> ftd_novibet
+//
+// ✅ CONFIGURAÇÃO DE PIXELS (Render Environment Variables)
+// META_PIXEL_MASTER / META_TOKEN_MASTER  -> Recebe 100% dos eventos
+// META_PIXEL_SLOT1 / META_TOKEN_SLOT1    -> Vupibet
+// META_PIXEL_SLOT2 / META_TOKEN_SLOT2    -> Novibet
+// META_PIXEL_SLOT3 / META_TOKEN_SLOT3    -> Reservado
+// META_PIXEL_SLOT4 / META_TOKEN_SLOT4    -> Teste
+// META_PIXEL_SLOT5 / META_TOKEN_SLOT5    -> MGM (stand-by)
 // =====================================================================
 
 import express from "express";
@@ -57,11 +76,54 @@ app.set("trust proxy", true);
 
 app.use(express.json({ limit: "2mb" }));
 
-const PIXEL_ID = process.env.META_PIXEL_ID;
-const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN;
+// =========================
+// CONFIGURAÇÃO MULTI-PIXEL
+// =========================
 
 const META_API_VERSION = process.env.META_API_VERSION || "v20.0";
 const DEFAULT_ACTION_SOURCE = process.env.META_ACTION_SOURCE || "chat";
+
+// Pixel Mestre (recebe 100% dos eventos)
+const PIXEL_MASTER = {
+  id: process.env.META_PIXEL_MASTER || process.env.META_PIXEL_ID, // fallback para config antiga
+  token: process.env.META_TOKEN_MASTER || process.env.META_ACCESS_TOKEN,
+};
+
+// Slots de Pixels (1-5)
+const PIXEL_SLOTS = {
+  1: { // Vupibet
+    id: process.env.META_PIXEL_SLOT1,
+    token: process.env.META_TOKEN_SLOT1,
+    name: "Vupibet",
+  },
+  2: { // Novibet
+    id: process.env.META_PIXEL_SLOT2,
+    token: process.env.META_TOKEN_SLOT2,
+    name: "Novibet",
+  },
+  3: { // Reservado
+    id: process.env.META_PIXEL_SLOT3,
+    token: process.env.META_TOKEN_SLOT3,
+    name: "Reservado",
+  },
+  4: { // Teste
+    id: process.env.META_PIXEL_SLOT4,
+    token: process.env.META_TOKEN_SLOT4,
+    name: "Teste",
+  },
+  5: { // MGM (stand-by)
+    id: process.env.META_PIXEL_SLOT5,
+    token: process.env.META_TOKEN_SLOT5,
+    name: "MGM",
+  },
+};
+
+// Mapeamento de eventos SendPulse -> Slot padrão
+const EVENT_SLOT_MAP = {
+  bilhete_vupibet: 1,
+  bilhete_novibet: 2,
+  bilhete_mgm: 5,
+};
 
 // =========================
 // EVENTOS (SendPulse -> Meta)
@@ -105,7 +167,7 @@ const EVENT_MAP = {
 };
 
 // =========================
-// EVENTOS (Smartico -> Meta) - Vupibet
+// EVENTOS (Smartico -> Meta) - Vupibet (SLOT1)
 // =========================
 const SMARTICO_EVENT_MAP = {
   registro: "Registro_vupibet",
@@ -115,7 +177,7 @@ const SMARTICO_EVENT_MAP = {
 };
 
 // =========================
-// EVENTOS (Novibet -> Meta)
+// EVENTOS (Novibet -> Meta) - SLOT2
 // =========================
 const NOVIBET_EVENT_MAP = {
   registro: "Registro_novibet",
@@ -212,12 +274,23 @@ function getUserAgent(req) {
   return safeString(req.headers["user-agent"] || "");
 }
 
-async function sendToMeta(event) {
-  if (!PIXEL_ID || !ACCESS_TOKEN) {
-    throw new Error("Missing META_PIXEL_ID or META_ACCESS_TOKEN in environment variables.");
+// =========================
+// MULTI-PIXEL: Envio para Meta
+// =========================
+
+/**
+ * Envia evento para um pixel específico.
+ * @param {Object} event - Evento a ser enviado
+ * @param {string} pixelId - ID do pixel
+ * @param {string} accessToken - Token de acesso
+ * @returns {Object} Resposta da API do Meta
+ */
+async function sendToPixel(event, pixelId, accessToken) {
+  if (!pixelId || !accessToken) {
+    return { skipped: true, reason: "pixel_not_configured" };
   }
 
-  const url = `https://graph.facebook.com/${META_API_VERSION}/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`;
+  const url = `https://graph.facebook.com/${META_API_VERSION}/${pixelId}/events?access_token=${accessToken}`;
 
   const res = await fetch(url, {
     method: "POST",
@@ -228,6 +301,56 @@ async function sendToMeta(event) {
   const json = await res.json();
   if (!res.ok) throw new Error(JSON.stringify(json));
   return json;
+}
+
+/**
+ * Envia evento para múltiplos pixels (mestre + slot específico).
+ * @param {Object} event - Evento a ser enviado
+ * @param {number|null} slotNumber - Número do slot (1-5) ou null para só mestre
+ * @returns {Object} Resultado do envio para cada pixel
+ */
+async function sendToMeta(event, slotNumber = null) {
+  const results = {
+    master: null,
+    slot: null,
+    slotNumber: slotNumber,
+  };
+
+  // 1. Enviar para Pixel Mestre (sempre, se configurado)
+  if (PIXEL_MASTER.id && PIXEL_MASTER.token) {
+    try {
+      console.log(`📤 [MASTER] Enviando para pixel mestre...`);
+      results.master = await sendToPixel(event, PIXEL_MASTER.id, PIXEL_MASTER.token);
+      console.log(`✅ [MASTER] OK:`, JSON.stringify(results.master));
+    } catch (err) {
+      console.error(`❌ [MASTER] Erro:`, err?.message || err);
+      results.master = { error: String(err?.message || err) };
+    }
+  } else {
+    console.warn(`⚠️ [MASTER] Pixel mestre não configurado`);
+    results.master = { skipped: true, reason: "not_configured" };
+  }
+
+  // 2. Enviar para Slot específico (se informado e configurado)
+  if (slotNumber && PIXEL_SLOTS[slotNumber]) {
+    const slot = PIXEL_SLOTS[slotNumber];
+    if (slot.id && slot.token) {
+      try {
+        console.log(`📤 [SLOT${slotNumber}] Enviando para ${slot.name}...`);
+        results.slot = await sendToPixel(event, slot.id, slot.token);
+        results.slotName = slot.name;
+        console.log(`✅ [SLOT${slotNumber}] OK:`, JSON.stringify(results.slot));
+      } catch (err) {
+        console.error(`❌ [SLOT${slotNumber}] Erro:`, err?.message || err);
+        results.slot = { error: String(err?.message || err) };
+      }
+    } else {
+      console.warn(`⚠️ [SLOT${slotNumber}] ${slot.name} não configurado`);
+      results.slot = { skipped: true, reason: "not_configured", name: slot.name };
+    }
+  }
+
+  return results;
 }
 
 // =========================
@@ -277,17 +400,17 @@ async function saveLeadContext(data) {
       },
     });
 
-    console.log("✅ [saveLeadContext] Contexto salvo:", { lead_id, afp: saved.afp });
+    console.log(`✅ [saveLeadContext] Contexto salvo:`, { lead_id: saved.lead_id, afp: saved.afp });
     return saved;
   } catch (err) {
-    console.error("❌ [saveLeadContext] Erro ao salvar (continuando):", err?.message || err);
+    console.error(`❌ [saveLeadContext] Erro ao salvar:`, err?.message || err);
     return null;
   }
 }
 
 /**
- * Busca o contexto do lead pelo campo afp (click_id).
- * Retorna null se não encontrar ou se o banco falhar.
+ * Busca o contexto do lead pelo afp (click_id).
+ * Retorna null se não encontrar ou se houver erro.
  */
 async function getLeadContextByAfp(afp) {
   try {
@@ -298,61 +421,51 @@ async function getLeadContextByAfp(afp) {
 
     const context = await prisma.leadContext.findFirst({
       where: { afp },
-      orderBy: { createdAt: "desc" },
     });
 
     if (context) {
-      console.log("✅ [getLeadContextByAfp] Contexto encontrado:", { afp, lead_id: context.lead_id });
+      console.log(`✅ [getLeadContextByAfp] Contexto encontrado:`, { afp: context.afp, lead_id: context.lead_id });
     } else {
-      console.log("ℹ️ [getLeadContextByAfp] Nenhum contexto encontrado para afp:", afp);
+      console.log(`⚠️ [getLeadContextByAfp] Contexto não encontrado para afp:`, afp);
     }
 
     return context;
   } catch (err) {
-    console.error("❌ [getLeadContextByAfp] Erro ao buscar (continuando):", err?.message || err);
+    console.error(`❌ [getLeadContextByAfp] Erro ao buscar:`, err?.message || err);
     return null;
   }
 }
 
 // =========================
-// Build (SendPulse -> Meta)
+// Builders
 // =========================
+
 function buildUserDataFromSendPulse({ vars, telegram_id, req }) {
-  const fbp = vars.fbp || undefined;
-  const fbc = vars.fbc || undefined;
-
-  const external_id = sha256(telegram_id) || undefined;
-
-  const client_ip_address = getClientIp(req) || undefined;
-  const client_user_agent = getUserAgent(req) || undefined;
-
-  // OPCIONAIS (se coletar no funil)
-  const rawEmail = vars.email || vars.em || vars.user_email || vars.userEmail || "";
-  const rawPhone =
-    vars.phone ||
-    vars.ph ||
-    vars.telefone ||
-    vars.tel ||
-    vars.user_phone ||
-    vars.userPhone ||
-    "";
-
-  const emNorm = normalizeEmail(rawEmail);
-  const phNorm = normalizePhone(rawPhone);
-
-  const em = emNorm ? sha256(emNorm) : undefined;
-  const ph = phNorm ? sha256(phNorm) : undefined;
-
   const user_data = {
-    fbp,
-    fbc,
-    external_id,
-    client_ip_address,
-    client_user_agent,
+    client_ip_address: getClientIp(req),
+    client_user_agent: getUserAgent(req),
   };
 
-  if (em) user_data.em = em;
-  if (ph) user_data.ph = ph;
+  // external_id: hash do telegram_id (identificador forte)
+  if (telegram_id) {
+    user_data.external_id = sha256(String(telegram_id));
+  }
+
+  // fbp e fbc em user_data para atribuição
+  const fbp = cleanStr(vars.fbp);
+  const fbc = cleanStr(vars.fbc);
+  if (fbp) user_data.fbp = fbp;
+  if (fbc) user_data.fbc = fbc;
+
+  // email e telefone (se existirem)
+  const rawEmail = vars.email || vars.em;
+  const rawPhone = vars.phone || vars.ph || vars.telefone;
+
+  const em = normalizeEmail(rawEmail);
+  const ph = normalizePhone(rawPhone);
+
+  if (em) user_data.em = sha256(em);
+  if (ph) user_data.ph = sha256(ph);
 
   return user_data;
 }
@@ -385,81 +498,115 @@ function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
   };
 }
 
-function resolveEventKey(req, extracted) {
-  const q = safeString(req.query?.e || req.query?.event || "").toLowerCase().trim();
-  if (q) return q;
+// =========================
+// ROTA: /status (Health Check + Pixel Status)
+// =========================
+app.get("/status", (req, res) => {
+  const pixelStatus = {
+    master: {
+      configured: !!(PIXEL_MASTER.id && PIXEL_MASTER.token),
+      pixelId: PIXEL_MASTER.id ? `${PIXEL_MASTER.id.slice(0, 4)}...${PIXEL_MASTER.id.slice(-4)}` : null,
+    },
+    slots: {},
+  };
 
-  const title = safeString(extracted?.title || "").toLowerCase().trim();
-  if (title) return title;
+  for (const [num, slot] of Object.entries(PIXEL_SLOTS)) {
+    pixelStatus.slots[`slot${num}`] = {
+      name: slot.name,
+      configured: !!(slot.id && slot.token),
+      pixelId: slot.id ? `${slot.id.slice(0, 4)}...${slot.id.slice(-4)}` : null,
+    };
+  }
 
-  return "";
-}
+  res.json({
+    ok: true,
+    service: "sp-meta-capi",
+    version: "2.0.0",
+    timestamp: new Date().toISOString(),
+    pixels: pixelStatus,
+    endpoints: {
+      sendpulse: "POST /sp/event?e=EVENTO&slot=SLOT",
+      smartico: "GET /smartico/postback?ev=EVENTO",
+      novibet_registro: "POST /novibet/registro",
+      novibet_deposito: "POST /novibet/deposito",
+    },
+  });
+});
 
 // =========================
-// Routes
+// ROTA: /health (Simple Health Check)
 // =========================
-app.get("/", (req, res) => res.status(200).send("OK"));
+app.get("/health", (req, res) => {
+  res.json({ ok: true, timestamp: new Date().toISOString() });
+});
 
-// ✅ ROTA ÚNICA (SendPulse)
+// =========================
+// SENDPULSE -> META (POST)
+// =========================
 app.post("/sp/event", async (req, res) => {
   try {
     console.log("🔥 /sp/event WEBHOOK RECEBIDO");
     console.log("🕒", new Date().toISOString());
     console.log("🔎 Query:", JSON.stringify(req.query || {}));
-    console.log("📦 BODY:", JSON.stringify(req.body, null, 2));
 
-    const extracted = extractVarsAndTelegramId(req.body);
-    const key = resolveEventKey(req, extracted);
+    const eventKey = safeString(req.query.e || req.query.event || "").toLowerCase().trim();
+    const slotParam = parseInt(req.query.slot) || null;
 
-    if (!key || !EVENT_MAP[key]) {
-      const known = Object.keys(EVENT_MAP);
-      console.warn("⚠️ Evento não mapeado:", key);
-      return res.status(400).json({
-        ok: false,
-        error: "EVENT_NOT_MAPPED",
-        received_key: key,
-        known_keys: known,
-        hint: "Use /sp/event?e=lead_whatsapp (ou outro), ou garanta que o body.title venha como lead_whatsapp.",
-      });
+    // Determinar slot: parâmetro > mapeamento automático > null
+    const slotNumber = slotParam || EVENT_SLOT_MAP[eventKey] || null;
+
+    const cfg = EVENT_MAP[eventKey];
+    if (!cfg) {
+      const titleFallback = safeString(req.body?.title || req.body?.[0]?.title || "").toLowerCase().trim();
+      const fallbackCfg = EVENT_MAP[titleFallback];
+      if (!fallbackCfg) {
+        console.warn("⚠️ Evento não mapeado:", eventKey, "| title:", titleFallback);
+        return res.status(400).json({
+          ok: false,
+          error: "EVENT_NOT_MAPPED",
+          received: eventKey,
+          title: titleFallback,
+          known: Object.keys(EVENT_MAP),
+        });
+      }
     }
 
-    const cfg = EVENT_MAP[key];
-    const event = buildSendPulseEvent({
-      cfg,
-      vars: extracted.vars,
-      telegram_id: extracted.telegram_id,
-      req,
-    });
+    const finalCfg = cfg || EVENT_MAP[safeString(req.body?.title || req.body?.[0]?.title || "").toLowerCase().trim()];
+    const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
 
-    console.log("🚀 Enviando para Meta:", JSON.stringify(event, null, 2));
-    const metaResp = await sendToMeta(event);
-    console.log("✅ Meta OK:", JSON.stringify(metaResp));
+    const event = buildSendPulseEvent({ cfg: finalCfg, vars, telegram_id, req });
 
-    // ✅ PERSISTÊNCIA: Salvar contexto do lead no banco (não bloqueia resposta)
-    const vars = extracted.vars;
+    console.log(`🚀 Enviando SendPulse -> Meta (slot=${slotNumber || 'master'}):`, JSON.stringify(event, null, 2));
+
+    const metaResp = await sendToMeta(event, slotNumber);
+    console.log("✅ Meta Response:", JSON.stringify(metaResp));
+
+    // Salvar contexto do lead no banco (async, não bloqueia resposta)
     const leadId = vars.lead_id || event.custom_data?.lead_id;
-    const afpValue = vars.afp || vars.click_id || vars.afp1 || "";
-    
-    saveLeadContext({
+    const contextData = {
       lead_id: leadId,
-      afp: afpValue,
-      fbp: vars.fbp,
-      fbc: vars.fbc,
-      fbclid: vars.fbclid,
-      utm_source: vars.utm_source,
-      utm_medium: vars.utm_medium,
-      utm_campaign: vars.utm_campaign,
-      utm_content: vars.utm_content,
+      afp: leadId, // afp = lead_id para SendPulse
+      fbp: cleanStr(vars.fbp),
+      fbc: cleanStr(vars.fbc),
+      fbclid: cleanStr(vars.fbclid),
+      utm_source: cleanStr(vars.utm_source),
+      utm_medium: cleanStr(vars.utm_medium),
+      utm_campaign: cleanStr(vars.utm_campaign),
+      utm_content: cleanStr(vars.utm_content),
       client_ip_address: getClientIp(req),
       client_user_agent: getUserAgent(req),
-    }).catch((e) => console.error("❌ [saveLeadContext] Falha async:", e?.message));
+    };
+
+    saveLeadContext(contextData).catch(err => {
+      console.error("❌ [saveLeadContext] Erro async:", err?.message || err);
+    });
 
     res.json({
       ok: true,
-      key,
       event_name: event.event_name,
       event_id: event.event_id,
-      context_saved: !!leadId,
+      slot: slotNumber,
+      context_saved: true,
       meta: metaResp,
     });
   } catch (err) {
@@ -469,45 +616,30 @@ app.post("/sp/event", async (req, res) => {
 });
 
 // =========================
-// Compatibilidade (funis antigos SendPulse)
+// ROTAS ANTIGAS (compatibilidade)
 // =========================
 async function compatHandler(req, res, key) {
   try {
-    console.log(`🔥 /sp/${key} WEBHOOK RECEBIDO`);
-    console.log("🕒", new Date().toISOString());
-    console.log("📦 BODY:", JSON.stringify(req.body, null, 2));
-
-    if (!EVENT_MAP[key]) {
+    const cfg = EVENT_MAP[key];
+    if (!cfg) {
       return res.status(400).json({ ok: false, error: "EVENT_NOT_MAPPED", key });
     }
 
-    const extracted = extractVarsAndTelegramId(req.body);
-    const cfg = EVENT_MAP[key];
+    const slotNumber = EVENT_SLOT_MAP[key] || null;
+    const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
+    const event = buildSendPulseEvent({ cfg, vars, telegram_id, req });
 
-    const event = buildSendPulseEvent({
-      cfg,
-      vars: extracted.vars,
-      telegram_id: extracted.telegram_id,
-      req,
-    });
+    console.log(`🚀 Enviando /sp/${key} -> Meta (slot=${slotNumber || 'master'}):`, JSON.stringify(event, null, 2));
 
-    console.log("🚀 Enviando para Meta:", JSON.stringify(event, null, 2));
-    const metaResp = await sendToMeta(event);
+    const metaResp = await sendToMeta(event, slotNumber);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
 
-    res.json({
-      ok: true,
-      key,
-      event_name: event.event_name,
-      event_id: event.event_id,
-      meta: metaResp,
-    });
+    res.json({ ok: true, event_name: event.event_name, event_id: event.event_id, slot: slotNumber, meta: metaResp });
   } catch (err) {
     console.error(`❌ /sp/${key} ERROR:`, err?.message || err);
     res.status(500).json({ ok: false, error: String(err?.message || err) });
   }
 }
-
 // Rotas antigas (mantidas)
 app.post("/sp/lead", (req, res) => compatHandler(req, res, "lead_telegram"));
 app.post("/sp/register", (req, res) => compatHandler(req, res, "registro_casa"));
@@ -515,7 +647,7 @@ app.post("/sp/group", (req, res) => compatHandler(req, res, "grupo_telegram"));
 app.post("/sp/bilhete", (req, res) => compatHandler(req, res, "bilhete_mgm"));
 
 // =========================
-// SMARTICO -> META (GET)
+// SMARTICO -> META (GET) - SLOT1 (Vupibet)
 // =========================
 app.get("/smartico/postback", async (req, res) => {
   try {
@@ -525,8 +657,8 @@ app.get("/smartico/postback", async (req, res) => {
 
     const q = req.query || {};
     const evKey = safeString(q.ev || "").toLowerCase().trim();
-
     const metaEventName = SMARTICO_EVENT_MAP[evKey];
+
     if (!metaEventName) {
       console.warn("⚠️ Smartico ev não mapeado:", evKey);
       return res.status(400).json({
@@ -540,7 +672,7 @@ app.get("/smartico/postback", async (req, res) => {
     // ✅ FILTRO DE QUALIDADE: Verificar se afp é UUID válido (nosso lead_id)
     const afpKey = cleanStr(q.afp) || cleanStr(q.click_id) || cleanStr(q.afp1) || "";
     const isOurLead = isValidUUID(afpKey);
-    
+
     if (!isOurLead) {
       console.log("🚫 [FILTRO] afp não é UUID válido, ignorando evento:", afpKey || "(vazio)");
       console.log("📋 [FILTRO] Evento de outro expert, retornando OK sem enviar para Meta");
@@ -552,13 +684,13 @@ app.get("/smartico/postback", async (req, res) => {
         hint: "Evento ignorado pois afp não é um UUID válido do nosso funil"
       });
     }
-    
+
     console.log("✅ [FILTRO] afp é UUID válido, processando evento:", afpKey);
-    
+
     // ✅ ENRIQUECIMENTO: Buscar contexto salvo pelo afp (click_id)
     const savedContext = await getLeadContextByAfp(afpKey);
     const hasContext = !!savedContext;
-    
+
     console.log("📊 [MATCH]", hasContext ? "Contexto encontrado no banco" : "Usando dados da query (fallback)");
 
     const smarticoTime =
@@ -580,7 +712,6 @@ app.get("/smartico/postback", async (req, res) => {
       parseValue(q.value) ??
       parseValue(q.first_deposit_amount) ??
       parseValue(q.deposit);
-
     const currency = cleanStr(q.currency) || cleanStr(q.payout_currency) || "BRL";
 
     // ✅ UTMs: prioridade banco > query
@@ -598,7 +729,6 @@ app.get("/smartico/postback", async (req, res) => {
       event_time,
       action_source: "website",
       event_id,
-
       // ✅ fbp/fbc em user_data para atribuição (enriquecido)
       user_data: {
         client_ip_address: client_ip,
@@ -607,32 +737,25 @@ app.get("/smartico/postback", async (req, res) => {
         fbp,
         fbc,
       },
-
       custom_data: {
         origem: "smartico",
         context_matched: hasContext, // ✅ Flag para debug
-
         brand_name: cleanStr(q.brand_name),
         brand_id: cleanStr(q.brand_id),
         country_code: cleanStr(q.country_code),
         deal_id: cleanStr(q.deal_id),
         deal_group_id: cleanStr(q.deal_group_id),
         deal_group_name: cleanStr(q.deal_group_name),
-
         campaign_id: cleanStr(q.campaign_id),
         campaign_name: cleanStr(q.campaign_name),
-
         link_id: cleanStr(q.link_id),
         link_name: cleanStr(q.link_name),
-
         registration_id: cleanStr(q.registration_id),
         customer_id: cleanStr(q.customer_id),
-
         utm_source,
         utm_medium,
         utm_campaign,
         utm_content,
-
         afp: cleanStr(q.afp),
         afp1: cleanStr(q.afp1),
         afp2: cleanStr(q.afp2),
@@ -643,26 +766,27 @@ app.get("/smartico/postback", async (req, res) => {
         afp7: cleanStr(q.afp7),
         afp8: cleanStr(q.afp8),
         afp9: cleanStr(q.afp9),
-
         fbclid,
-
         // ✅ valor convertido
         value: value ?? undefined,
         currency,
       },
     };
 
-    console.log("🚀 Enviando Smartico -> Meta:", JSON.stringify(event, null, 2));
-    const metaResp = await sendToMeta(event);
+    console.log("🚀 Enviando Smartico -> Meta (SLOT1 - Vupibet):", JSON.stringify(event, null, 2));
+
+    // Smartico sempre vai para SLOT1 (Vupibet)
+    const metaResp = await sendToMeta(event, 1);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
 
-    res.json({ 
-      ok: true, 
-      ev: evKey, 
-      event_name: metaEventName, 
-      event_id, 
+    res.json({
+      ok: true,
+      ev: evKey,
+      event_name: metaEventName,
+      event_id,
+      slot: 1,
       context_matched: hasContext,
-      meta: metaResp 
+      meta: metaResp
     });
   } catch (err) {
     console.error("❌ /smartico/postback ERROR:", err?.message || err);
@@ -670,22 +794,13 @@ app.get("/smartico/postback", async (req, res) => {
   }
 });
 
-// Start
-
 // =========================
-// NOVIBET -> META (POST)
+// NOVIBET -> META (POST) - SLOT2
 // =========================
 
 /**
  * Endpoint para Registro da Novibet
  * URL: POST /novibet/registro
- * Parâmetros esperados (body ou query):
- * - t1: click_id (nosso lead_id/afp)
- * - registration_id: ID do registro na Novibet
- * - country_code: código do país (opcional)
- * - brand: identificador da marca (opcional)
- * - currency: moeda (opcional, default BRL)
- * - timestamp: Unix timestamp (opcional)
  */
 app.post("/novibet/registro", async (req, res) => {
   try {
@@ -696,10 +811,10 @@ app.post("/novibet/registro", async (req, res) => {
 
     // Novibet pode enviar via body ou query
     const data = { ...req.query, ...req.body };
-    
+
     // t1 é o click_id da Novibet (nosso lead_id/afp)
     const afpKey = cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
-    
+
     // Validar se é UUID válido (nosso lead)
     if (!isValidUUID(afpKey)) {
       console.log("🚫 [NOVIBET] t1 não é UUID válido, ignorando:", afpKey || "(vazio)");
@@ -716,7 +831,7 @@ app.post("/novibet/registro", async (req, res) => {
     // Buscar contexto salvo
     const savedContext = await getLeadContextByAfp(afpKey);
     const hasContext = !!savedContext;
-    
+
     console.log("📊 [MATCH]", hasContext ? "Contexto encontrado no banco" : "Usando dados do postback (fallback)");
 
     const metaEventName = NOVIBET_EVENT_MAP.registro;
@@ -766,8 +881,10 @@ app.post("/novibet/registro", async (req, res) => {
       },
     };
 
-    console.log("🚀 Enviando Novibet Registro -> Meta:", JSON.stringify(event, null, 2));
-    const metaResp = await sendToMeta(event);
+    console.log("🚀 Enviando Novibet Registro -> Meta (SLOT2):", JSON.stringify(event, null, 2));
+
+    // Novibet sempre vai para SLOT2
+    const metaResp = await sendToMeta(event, 2);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
 
     res.json({
@@ -775,6 +892,7 @@ app.post("/novibet/registro", async (req, res) => {
       event_type: "registro",
       event_name: metaEventName,
       event_id,
+      slot: 2,
       context_matched: hasContext,
       meta: metaResp,
     });
@@ -787,15 +905,6 @@ app.post("/novibet/registro", async (req, res) => {
 /**
  * Endpoint para Depósito da Novibet
  * URL: POST /novibet/deposito
- * Parâmetros esperados (body ou query):
- * - t1: click_id (nosso lead_id/afp)
- * - registration_id: ID do registro na Novibet
- * - value: valor do depósito
- * - currency: moeda (opcional, default BRL)
- * - country_code: código do país (opcional)
- * - brand: identificador da marca (opcional)
- * - timestamp: Unix timestamp (opcional)
- * - is_ftd: se é primeiro depósito (opcional, para diferenciar FTD de depósito normal)
  */
 app.post("/novibet/deposito", async (req, res) => {
   try {
@@ -805,9 +914,9 @@ app.post("/novibet/deposito", async (req, res) => {
     console.log("🔎 Query:", JSON.stringify(req.query || {}));
 
     const data = { ...req.query, ...req.body };
-    
+
     const afpKey = cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
-    
+
     if (!isValidUUID(afpKey)) {
       console.log("🚫 [NOVIBET] t1 não é UUID válido, ignorando:", afpKey || "(vazio)");
       return res.json({
@@ -822,13 +931,13 @@ app.post("/novibet/deposito", async (req, res) => {
 
     const savedContext = await getLeadContextByAfp(afpKey);
     const hasContext = !!savedContext;
-    
+
     console.log("📊 [MATCH]", hasContext ? "Contexto encontrado no banco" : "Usando dados do postback (fallback)");
 
     // Determinar se é FTD ou depósito normal
     const isFtd = data.is_ftd === "true" || data.is_ftd === true || data.status === "ftd";
     const metaEventName = isFtd ? NOVIBET_EVENT_MAP.ftd : NOVIBET_EVENT_MAP.deposito;
-    
+
     const event_time = parseInt(data.timestamp) || Math.floor(Date.now() / 1000);
     const baseId = cleanStr(data.registration_id) || afpKey || crypto.randomUUID();
     const event_id = `${baseId}_${metaEventName}_${event_time}`;
@@ -879,8 +988,10 @@ app.post("/novibet/deposito", async (req, res) => {
       },
     };
 
-    console.log("🚀 Enviando Novibet Depósito -> Meta:", JSON.stringify(event, null, 2));
-    const metaResp = await sendToMeta(event);
+    console.log("🚀 Enviando Novibet Depósito -> Meta (SLOT2):", JSON.stringify(event, null, 2));
+
+    // Novibet sempre vai para SLOT2
+    const metaResp = await sendToMeta(event, 2);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
 
     res.json({
@@ -888,6 +999,7 @@ app.post("/novibet/deposito", async (req, res) => {
       event_type: isFtd ? "ftd" : "deposito",
       event_name: metaEventName,
       event_id,
+      slot: 2,
       context_matched: hasContext,
       value,
       currency,
@@ -899,7 +1011,15 @@ app.post("/novibet/deposito", async (req, res) => {
   }
 });
 
+// =========================
+// Start
+// =========================
 const port = process.env.PORT || 10000;
 app.listen(port, () => {
-  console.log(`🚀 sp-meta-capi listening on port ${port}`);
+  console.log(`🚀 sp-meta-capi v2.0.0 listening on port ${port}`);
+  console.log(`📊 Pixels configurados:`);
+  console.log(`   - Master: ${PIXEL_MASTER.id ? '✅' : '❌'}`);
+  for (const [num, slot] of Object.entries(PIXEL_SLOTS)) {
+    console.log(`   - Slot${num} (${slot.name}): ${slot.id ? '✅' : '❌'}`);
+  }
 });
