@@ -835,8 +835,8 @@ app.post("/novibet/registro", async (req, res) => {
     // Novibet pode enviar via body ou query
     const data = { ...req.query, ...req.body };
 
-    // t1 é o click_id da Novibet (nosso lead_id/afp)
-    const afpKey = cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
+    // ✅ Suportar ambos: tracking_tag (oficial) e t1 (legado)
+    const afpKey = cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
 
     // Validar se é UUID válido (nosso lead)
     if (!isValidUUID(afpKey)) {
@@ -858,8 +858,17 @@ app.post("/novibet/registro", async (req, res) => {
     console.log("📊 [MATCH]", hasContext ? "Contexto encontrado no banco" : "Usando dados do postback (fallback)");
 
     const metaEventName = NOVIBET_EVENT_MAP.registro;
-    const event_time = parseInt(data.timestamp) || Math.floor(Date.now() / 1000);
-    const baseId = cleanStr(data.registration_id) || afpKey || crypto.randomUUID();
+    
+    // ✅ Suportar ambos: action_date (oficial Y-m-d) e timestamp (legado Unix)
+    let event_time;
+    if (data.action_date) {
+      // Converter Y-m-d para timestamp Unix
+      event_time = Math.floor(new Date(data.action_date).getTime() / 1000);
+    } else {
+      event_time = parseInt(data.timestamp) || Math.floor(Date.now() / 1000);
+    }
+    
+    const baseId = cleanStr(data.player_id) || cleanStr(data.registration_id) || afpKey || crypto.randomUUID();
     const event_id = `${baseId}_${metaEventName}`;
 
     // Prioridade: banco > postback
@@ -891,11 +900,22 @@ app.post("/novibet/registro", async (req, res) => {
       custom_data: {
         origem: "novibet",
         context_matched: hasContext,
+        vendor_id: cleanStr(data.vendor_id),
+        action: cleanStr(data.action) || "registration",
+        player_id: cleanStr(data.player_id),
         registration_id: cleanStr(data.registration_id),
         country_code: cleanStr(data.country_code),
         brand: cleanStr(data.brand),
         currency: cleanStr(data.currency) || "BRL",
-        t1: afpKey,
+        promo_code: cleanStr(data.promo_code),
+        tracking_tag: afpKey,
+        // Parâmetros customizados (c1-c5)
+        c1: cleanStr(data.c1),
+        c2: cleanStr(data.c2),
+        c3: cleanStr(data.c3),
+        c4: cleanStr(data.c4),
+        c5: cleanStr(data.c5),
+        // UTMs
         utm_source,
         utm_medium,
         utm_campaign,
@@ -938,7 +958,8 @@ app.post("/novibet/deposito", async (req, res) => {
 
     const data = { ...req.query, ...req.body };
 
-    const afpKey = cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
+    // ✅ Suportar ambos: tracking_tag (oficial) e t1 (legado)
+    const afpKey = cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
 
     if (!isValidUUID(afpKey)) {
       console.log("🚫 [NOVIBET] t1 não é UUID válido, ignorando:", afpKey || "(vazio)");
@@ -961,8 +982,15 @@ app.post("/novibet/deposito", async (req, res) => {
     const isFtd = data.is_ftd === "true" || data.is_ftd === true || data.status === "ftd";
     const metaEventName = isFtd ? NOVIBET_EVENT_MAP.ftd : NOVIBET_EVENT_MAP.deposito;
 
-    const event_time = parseInt(data.timestamp) || Math.floor(Date.now() / 1000);
-    const baseId = cleanStr(data.registration_id) || afpKey || crypto.randomUUID();
+    // ✅ Suportar ambos: action_date (oficial Y-m-d) e timestamp (legado Unix)
+    let event_time;
+    if (data.action_date) {
+      event_time = Math.floor(new Date(data.action_date).getTime() / 1000);
+    } else {
+      event_time = parseInt(data.timestamp) || Math.floor(Date.now() / 1000);
+    }
+    
+    const baseId = cleanStr(data.player_id) || cleanStr(data.registration_id) || afpKey || crypto.randomUUID();
     const event_id = `${baseId}_${metaEventName}_${event_time}`;
 
     const fbp = cleanStr(savedContext?.fbp) || cleanStr(data.fbp);
@@ -997,12 +1025,23 @@ app.post("/novibet/deposito", async (req, res) => {
         origem: "novibet",
         context_matched: hasContext,
         is_ftd: isFtd,
+        vendor_id: cleanStr(data.vendor_id),
+        action: cleanStr(data.action) || "deposit",
+        player_id: cleanStr(data.player_id),
         registration_id: cleanStr(data.registration_id),
         country_code: cleanStr(data.country_code),
         brand: cleanStr(data.brand),
+        promo_code: cleanStr(data.promo_code),
         value: value ?? undefined,
         currency,
-        t1: afpKey,
+        tracking_tag: afpKey,
+        // Parâmetros customizados (c1-c5)
+        c1: cleanStr(data.c1),
+        c2: cleanStr(data.c2),
+        c3: cleanStr(data.c3),
+        c4: cleanStr(data.c4),
+        c5: cleanStr(data.c5),
+        // UTMs
         utm_source,
         utm_medium,
         utm_campaign,
