@@ -835,8 +835,8 @@ app.post("/novibet/registro", async (req, res) => {
     // Novibet pode enviar via body ou query
     const data = { ...req.query, ...req.body };
 
-    // ✅ Suportar: tracking_tag (oficial), t1 (legado), c2 (backup)
-    const afpKey = cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.c2) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
+    // ✅ Suportar: tracking_tag (oficial), t1 (legado), s2 (backup)
+    const afpKey = cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.s2) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
 
     // Validar se é UUID válido (nosso lead)
     if (!isValidUUID(afpKey)) {
@@ -965,8 +965,8 @@ app.post("/novibet/deposito", async (req, res) => {
 
     const data = { ...req.query, ...req.body };
 
-    // ✅ Suportar: tracking_tag (oficial), t1 (legado), c2 (backup)
-    const afpKey = cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.c2) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
+    // ✅ Suportar: tracking_tag (oficial), t1 (legado), s2 (backup)
+    const afpKey = cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.s2) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
 
     if (!isValidUUID(afpKey)) {
       console.log("🚫 [NOVIBET] t1 não é UUID válido, ignorando:", afpKey || "(vazio)");
