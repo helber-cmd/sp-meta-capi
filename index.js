@@ -915,6 +915,13 @@ app.post("/novibet/registro", async (req, res) => {
         c3: cleanStr(data.c3),
         c4: cleanStr(data.c4),
         c5: cleanStr(data.c5),
+        // Sub source tagging (s1-s3) - Analytics
+        s1: cleanStr(data.s1),
+        s2: cleanStr(data.s2),
+        s3: cleanStr(data.s3),
+        // Transaction tagging (t2-t3) - Pixels/Exports (t1 é tracking_tag)
+        t2: cleanStr(data.t2),
+        t3: cleanStr(data.t3),
         // UTMs
         utm_source,
         utm_medium,
@@ -1041,6 +1048,13 @@ app.post("/novibet/deposito", async (req, res) => {
         c3: cleanStr(data.c3),
         c4: cleanStr(data.c4),
         c5: cleanStr(data.c5),
+        // Sub source tagging (s1-s3) - Analytics
+        s1: cleanStr(data.s1),
+        s2: cleanStr(data.s2),
+        s3: cleanStr(data.s3),
+        // Transaction tagging (t2-t3) - Pixels/Exports (t1 é tracking_tag)
+        t2: cleanStr(data.t2),
+        t3: cleanStr(data.t3),
         // UTMs
         utm_source,
         utm_medium,
