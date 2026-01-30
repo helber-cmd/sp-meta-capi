@@ -29,6 +29,7 @@
 //    - Suporte a 5 slots + 1 pixel mestre
 //    - Pixel mestre recebe 100% dos eventos
 //    - Cada slot pode ser associado a uma casa específica
+//    - Esportivabet: Slot 3 e Slot 4 (2 pixels isolados)
 //
 // ✅ EVENTOS ATIVOS (TOPO — para referência rápida)
 // SendPulse (/sp/event?e=...&slot=X)
@@ -37,7 +38,9 @@
 // - grupo_telegram        -> Grupo_Telegram
 // - bilhete_mgm           -> Bilhete_MGM           (slot=5)
 // - bilhete_novibet       -> Bilhete_Novibet       (slot=2)
-// - bilhete_vupibet       -> Bilhete_Vupibet       (slot=1)
+// - bilhete_novibet       -> Bilhete_Novibet       (slot=2)
+// - bilhete_esportivabet  -> Bilhete_Esportivabet  (slot=3)
+// - bilhete_esportivabet2 -> Bilhete_Esportivabet  (slot=4)
 // - lead_whatsapp         -> Lead_Whatsapp
 // - lead_comunidadewpp    -> Lead_ComunidadeWPP
 //
@@ -52,12 +55,18 @@
 // - deposito              -> deposito_novibet
 // - ftd                   -> ftd_novibet
 //
+// Esportivabet (/esportivabet/postback?ev=...&slot=3|4) -> SLOT3 e SLOT4
+// - registro              -> Registro_esportivabet
+// - ftd                   -> ftd_esportivabet
+// - qftd                  -> qftd_esportivabet
+// - deposito              -> deposito_esportivabet
+//
 // ✅ CONFIGURAÇÃO DE PIXELS (Render Environment Variables)
 // META_PIXEL_MASTER / META_TOKEN_MASTER  -> Recebe 100% dos eventos
 // META_PIXEL_SLOT1 / META_TOKEN_SLOT1    -> Vupibet
 // META_PIXEL_SLOT2 / META_TOKEN_SLOT2    -> Novibet
-// META_PIXEL_SLOT3 / META_TOKEN_SLOT3    -> Reservado
-// META_PIXEL_SLOT4 / META_TOKEN_SLOT4    -> Teste
+// META_PIXEL_SLOT3 / META_TOKEN_SLOT3    -> Esportivabet Pixel 1
+// META_PIXEL_SLOT4 / META_TOKEN_SLOT4    -> Esportivabet Pixel 2
 // META_PIXEL_SLOT5 / META_TOKEN_SLOT5    -> MGM (stand-by)
 // =====================================================================
 
@@ -101,15 +110,15 @@ const PIXEL_SLOTS = {
     token: process.env.META_TOKEN_SLOT2,
     name: "Novibet",
   },
-  3: { // Reservado
+  3: { // Esportivabet Pixel 1
     id: process.env.META_PIXEL_SLOT3,
     token: process.env.META_TOKEN_SLOT3,
-    name: "Reservado",
+    name: "Esportivabet_1",
   },
-  4: { // Teste
+  4: { // Esportivabet Pixel 2
     id: process.env.META_PIXEL_SLOT4,
     token: process.env.META_TOKEN_SLOT4,
-    name: "Teste",
+    name: "Esportivabet_2",
   },
   5: { // MGM (stand-by)
     id: process.env.META_PIXEL_SLOT5,
@@ -122,6 +131,8 @@ const PIXEL_SLOTS = {
 const EVENT_SLOT_MAP = {
   bilhete_vupibet: 1,
   bilhete_novibet: 2,
+  bilhete_esportivabet: 3, // Esportivabet Pixel 1 (padrão)
+  bilhete_esportivabet2: 4, // Esportivabet Pixel 2
   bilhete_mgm: 5,
 };
 
@@ -154,6 +165,14 @@ const EVENT_MAP = {
     event_name: "Bilhete_Vupibet",
     extra_custom_data: { origem: "telegram", produto: "bilhete_vupibet" },
   },
+  bilhete_esportivabet: {
+    event_name: "Bilhete_Esportivabet",
+    extra_custom_data: { origem: "telegram", produto: "bilhete_esportivabet", pixel: "1" },
+  },
+  bilhete_esportivabet2: {
+    event_name: "Bilhete_Esportivabet",
+    extra_custom_data: { origem: "telegram", produto: "bilhete_esportivabet", pixel: "2" },
+  },
 
   // ---------- WHATSAPP ----------
   lead_whatsapp: {
@@ -183,6 +202,16 @@ const NOVIBET_EVENT_MAP = {
   registro: "Registro_novibet",
   deposito: "deposito_novibet",
   ftd: "ftd_novibet",
+};
+
+// =========================
+// EVENTOS (Esportivabet -> Meta) - SLOT3 e SLOT4
+// =========================
+const ESPORTIVABET_EVENT_MAP = {
+  registro: "Registro_esportivabet",
+  ftd: "ftd_esportivabet",
+  qftd: "qftd_esportivabet",
+  deposito: "deposito_esportivabet",
 };
 
 // =========================
@@ -527,6 +556,7 @@ app.get("/status", (req, res) => {
     endpoints: {
       sendpulse: "POST /sp/event?e=EVENTO&slot=SLOT",
       smartico: "GET /smartico/postback?ev=EVENTO",
+      esportivabet: "GET /esportivabet/postback?ev=EVENTO&slot=3|4",
       novibet_registro: "POST /novibet/registro",
       novibet_deposito: "POST /novibet/deposito",
     },
@@ -1000,6 +1030,156 @@ app.post("/novibet/deposito", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ /novibet/deposito ERROR:", err?.message || err);
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
+  }
+});
+
+// =========================
+// ESPORTIVABET -> META (GET) - SLOT3 e SLOT4
+// =========================
+
+/**
+ * Endpoint para postbacks da Smartico (Esportivabet)
+ * URL: GET /esportivabet/postback?ev=EVENTO&slot=SLOT&...
+ * 
+ * Suporta 2 slots:
+ * - slot=3 -> Esportivabet Pixel 1
+ * - slot=4 -> Esportivabet Pixel 2
+ * - sem slot -> padrão Slot 3
+ */
+app.get("/esportivabet/postback", async (req, res) => {
+  try {
+    console.log("🔥 /esportivabet/postback RECEBIDO");
+    console.log("🕒", new Date().toISOString());
+    console.log("🔎 Query:", JSON.stringify(req.query || {}));
+
+    const q = req.query;
+    const evKey = safeString(q.ev).toLowerCase().trim();
+    const slotParam = parseInt(q.slot) || 3; // Padrão: Slot 3
+
+    // Validar slot (apenas 3 ou 4)
+    const slotNumber = [3, 4].includes(slotParam) ? slotParam : 3;
+
+    const metaEventName = ESPORTIVABET_EVENT_MAP[evKey];
+    if (!metaEventName) {
+      console.warn("⚠️ Evento Esportivabet não mapeado:", evKey);
+      return res.status(400).json({
+        ok: false,
+        error: "EVENT_NOT_MAPPED",
+        received: evKey,
+        known: Object.keys(ESPORTIVABET_EVENT_MAP),
+      });
+    }
+
+    // ✅ FILTRO DE QUALIDADE: apenas UUID v4 válido
+    const afpKey = cleanStr(q.afp);
+    if (!isValidUUID(afpKey)) {
+      console.log("🚫 [ESPORTIVABET] afp não é UUID válido, ignorando:", afpKey || "(vazio)");
+      return res.json({
+        ok: true,
+        filtered: true,
+        reason: "afp_not_valid_uuid",
+        afp: afpKey || null,
+      });
+    }
+
+    console.log("✅ [ESPORTIVABET] afp é UUID válido, processando:", afpKey);
+
+    // Buscar contexto salvo
+    const savedContext = await getLeadContextByAfp(afpKey);
+    const hasContext = !!savedContext;
+
+    console.log("📊 [MATCH]", hasContext ? "Contexto encontrado no banco" : "Usando dados do postback (fallback)");
+
+    const smarticoTime =
+      parseInt(String(q.registration_date || q.first_deposit_date || ""), 10) || 0;
+    const event_time = smarticoTime > 0 ? smarticoTime : Math.floor(Date.now() / 1000);
+
+    const baseId = cleanStr(q.registration_id) || cleanStr(q.click_id) || crypto.randomUUID();
+    const event_id = `${baseId}_${metaEventName}`;
+
+    // ✅ PRIORIDADE: banco > query (fallback)
+    const fbp = cleanStr(savedContext?.fbp) || cleanStr(q.fbp);
+    const fbc = cleanStr(savedContext?.fbc) || cleanStr(q.fbc);
+    const fbclid = cleanStr(savedContext?.fbclid) || cleanStr(q.fbclid);
+
+    const extSeed = cleanStr(q.click_id) || cleanStr(q.afp) || cleanStr(q.customer_id) || "";
+    const external_id = extSeed ? sha256(extSeed) : undefined;
+
+    const value =
+      parseValue(q.value) ??
+      parseValue(q.first_deposit_amount) ??
+      parseValue(q.deposit);
+    const currency = cleanStr(q.currency) || cleanStr(q.payout_currency) || "BRL";
+
+    // ✅ UTMs: prioridade banco > query
+    const utm_source = cleanStr(savedContext?.utm_source) || cleanStr(q.utm_source);
+    const utm_medium = cleanStr(savedContext?.utm_medium) || cleanStr(q.utm_medium);
+    const utm_campaign = cleanStr(savedContext?.utm_campaign) || cleanStr(q.utm_campaign);
+    const utm_content = cleanStr(savedContext?.utm_content) || cleanStr(q.utm_content);
+
+    // ✅ IP/UA: prioridade banco (original do lead) > request atual
+    const client_ip = cleanStr(savedContext?.client_ip_address) || cleanStr(getClientIp(req));
+    const client_ua = cleanStr(savedContext?.client_user_agent) || cleanStr(getUserAgent(req));
+
+    const event = {
+      event_name: metaEventName,
+      event_time,
+      action_source: "website",
+      event_id,
+      user_data: {
+        client_ip_address: client_ip,
+        client_user_agent: client_ua,
+        external_id,
+        fbp,
+        fbc,
+      },
+      custom_data: {
+        origem: "smartico",
+        casa: "esportivabet",
+        pixel_slot: slotNumber,
+        context_matched: hasContext,
+        brand_name: cleanStr(q.brand_name),
+        brand_id: cleanStr(q.brand_id),
+        country_code: cleanStr(q.country_code),
+        deal_id: cleanStr(q.deal_id),
+        deal_group_id: cleanStr(q.deal_group_id),
+        deal_group_name: cleanStr(q.deal_group_name),
+        campaign_id: cleanStr(q.campaign_id),
+        campaign_name: cleanStr(q.campaign_name),
+        link_id: cleanStr(q.link_id),
+        link_name: cleanStr(q.link_name),
+        registration_id: cleanStr(q.registration_id),
+        customer_id: cleanStr(q.customer_id),
+        utm_source,
+        utm_medium,
+        utm_campaign,
+        utm_content,
+        afp: cleanStr(q.afp),
+        afp1: cleanStr(q.afp1),
+        afp9: cleanStr(q.afp9),
+        fbclid,
+        value: value ?? undefined,
+        currency,
+      },
+    };
+
+    console.log(`🚀 Enviando Esportivabet -> Meta (SLOT${slotNumber}):`, JSON.stringify(event, null, 2));
+
+    const metaResp = await sendToMeta(event, slotNumber);
+    console.log("✅ Meta OK:", JSON.stringify(metaResp));
+
+    res.json({
+      ok: true,
+      ev: evKey,
+      event_name: metaEventName,
+      event_id,
+      slot: slotNumber,
+      context_matched: hasContext,
+      meta: metaResp
+    });
+  } catch (err) {
+    console.error("❌ /esportivabet/postback ERROR:", err?.message || err);
     res.status(500).json({ ok: false, error: String(err?.message || err) });
   }
 });
