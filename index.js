@@ -525,7 +525,6 @@ app.get("/status", (req, res) => {
     timestamp: new Date().toISOString(),
     pixels: pixelStatus,
     endpoints: {
-      capture: "POST /capture (Captura dados da página)",
       sendpulse: "POST /sp/event?e=EVENTO&slot=SLOT",
       smartico: "GET /smartico/postback?ev=EVENTO",
       novibet_registro: "POST /novibet/registro",
@@ -539,75 +538,6 @@ app.get("/status", (req, res) => {
 // =========================
 app.get("/health", (req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString() });
-});
-
-// =========================
-// NOVA ROTA: /capture (Captura dados da página)
-// =========================
-/**
- * Recebe dados diretamente da página (antes de redirecionar para o bot).
- * Salva o contexto completo no banco.
- * Não envia para Meta ainda - apenas persiste os dados.
- */
-app.post("/capture", async (req, res) => {
-  try {
-    console.log("📥 /capture DADOS DA PÁGINA RECEBIDOS");
-    console.log("🕒", new Date().toISOString());
-    console.log("📦 Body:", JSON.stringify(req.body, null, 2));
-
-    const {
-      lead_id,
-      afp,
-      fbp,
-      fbc,
-      fbclid,
-      utm_source,
-      utm_medium,
-      utm_campaign,
-      utm_content,
-      afp1,
-      afp9,
-      user_agent,
-    } = req.body;
-
-    if (!lead_id) {
-      console.warn("⚠️ /capture lead_id ausente");
-      return res.status(400).json({ ok: false, error: "lead_id_required" });
-    }
-
-    // Salvar contexto no banco
-    const contextData = {
-      lead_id: cleanStr(lead_id),
-      afp: cleanStr(afp || lead_id), // afp = lead_id se não vier
-      fbp: cleanStr(fbp),
-      fbc: cleanStr(fbc),
-      fbclid: cleanStr(fbclid),
-      utm_source: cleanStr(utm_source),
-      utm_medium: cleanStr(utm_medium),
-      utm_campaign: cleanStr(utm_campaign),
-      utm_content: cleanStr(utm_content),
-      client_ip_address: getClientIp(req),
-      client_user_agent: cleanStr(user_agent) || getUserAgent(req),
-    };
-
-    const saved = await saveLeadContext(contextData);
-
-    if (saved) {
-      console.log("✅ /capture Contexto salvo com sucesso:", { lead_id: saved.lead_id, afp: saved.afp });
-      res.json({
-        ok: true,
-        message: "context_saved",
-        lead_id: saved.lead_id,
-        afp: saved.afp,
-      });
-    } else {
-      console.error("❌ /capture Falha ao salvar contexto");
-      res.status(500).json({ ok: false, error: "save_failed" });
-    }
-  } catch (err) {
-    console.error("❌ /capture ERROR:", err?.message || err);
-    res.status(500).json({ ok: false, error: String(err?.message || err) });
-  }
 });
 
 // =========================
@@ -644,53 +574,38 @@ app.post("/sp/event", async (req, res) => {
     const finalCfg = cfg || EVENT_MAP[safeString(req.body?.title || req.body?.[0]?.title || "").toLowerCase().trim()];
     const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
 
-    // 🆕 BUSCAR CONTEXTO DO BANCO (prioridade sobre SendPulse)
-    const leadId = vars.lead_id;
-    let enrichedVars = { ...vars };
-    let contextMatched = false;
-
-    if (leadId) {
-      const savedContext = await getLeadContextByAfp(leadId);
-      if (savedContext) {
-        contextMatched = true;
-        console.log("✅ [ENRIQUECIMENTO] Contexto encontrado no banco, usando dados da página:");
-        
-        // Priorizar dados do banco (da página) sobre SendPulse
-        enrichedVars = {
-          ...vars,
-          fbp: savedContext.fbp || vars.fbp,
-          fbc: savedContext.fbc || vars.fbc,
-          fbclid: savedContext.fbclid || vars.fbclid,
-          utm_source: savedContext.utm_source || vars.utm_source,
-          utm_medium: savedContext.utm_medium || vars.utm_medium,
-          utm_campaign: savedContext.utm_campaign || vars.utm_campaign,
-          utm_content: savedContext.utm_content || vars.utm_content,
-        };
-
-        console.log("📊 [ENRIQUECIMENTO] Dados enriquecidos:", {
-          fbp: enrichedVars.fbp,
-          fbc: enrichedVars.fbc,
-          fbclid: enrichedVars.fbclid,
-          utm_source: enrichedVars.utm_source,
-        });
-      } else {
-        console.warn("⚠️ [ENRIQUECIMENTO] Contexto não encontrado no banco para lead_id:", leadId);
-      }
-    }
-
-    const event = buildSendPulseEvent({ cfg: finalCfg, vars: enrichedVars, telegram_id, req });
+    const event = buildSendPulseEvent({ cfg: finalCfg, vars, telegram_id, req });
 
     console.log(`🚀 Enviando SendPulse -> Meta (slot=${slotNumber || 'master'}):`, JSON.stringify(event, null, 2));
 
     const metaResp = await sendToMeta(event, slotNumber);
     console.log("✅ Meta Response:", JSON.stringify(metaResp));
 
+    // Salvar contexto do lead no banco (async, não bloqueia resposta)
+    const leadId = vars.lead_id || event.custom_data?.lead_id;
+    const contextData = {
+      lead_id: leadId,
+      afp: leadId, // afp = lead_id para SendPulse
+      fbp: cleanStr(vars.fbp),
+      fbc: cleanStr(vars.fbc),
+      fbclid: cleanStr(vars.fbclid),
+      utm_source: cleanStr(vars.utm_source),
+      utm_medium: cleanStr(vars.utm_medium),
+      utm_campaign: cleanStr(vars.utm_campaign),
+      utm_content: cleanStr(vars.utm_content),
+      client_ip_address: getClientIp(req),
+      client_user_agent: getUserAgent(req),
+    };
+
+    saveLeadContext(contextData).catch(err => {
+      console.error("❌ [saveLeadContext] Erro async:", err?.message || err);
+    });
+
     res.json({
       ok: true,
       event_name: event.event_name,
       event_id: event.event_id,
       slot: slotNumber,
-      context_matched: contextMatched,
       context_saved: true,
       meta: metaResp,
     });
