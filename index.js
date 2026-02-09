@@ -838,16 +838,20 @@ app.post("/novibet/registro", async (req, res) => {
     // ✅ Suportar: tracking_tag (oficial), t1 (legado), s2 (backup)
     const afpKey = cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.s2) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
 
-    // Validar se é UUID válido (nosso lead)
-    if (!isValidUUID(afpKey)) {
-      console.log("🚫 [NOVIBET] t1 não é UUID válido, ignorando:", afpKey || "(vazio)");
+   // === NOVA VALIDAÇÃO (ACEITA RAVENTRACK) ===
+    // Aceita letras, números, traço e underline (ex: 2007430_8400875089)
+    const isIdValido = afpKey && afpKey.length > 2 && /^[a-zA-Z0-9_-]+$/.test(afpKey);
+
+    if (!isIdValido) {
+      console.log("🚫 [NOVIBET] ID inválido ou vazio, ignorando:", afpKey || "(vazio)");
       return res.json({
         ok: true,
         filtered: true,
-        reason: "t1_not_valid_uuid",
+        reason: "id_invalid_format",
         t1: afpKey || null,
       });
     }
+    // ==========================================
 
     console.log("✅ [NOVIBET] t1 é UUID válido, processando registro:", afpKey);
 
@@ -968,15 +972,19 @@ app.post("/novibet/deposito", async (req, res) => {
     // ✅ Suportar: tracking_tag (oficial), t1 (legado), s2 (backup)
     const afpKey = cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.s2) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
 
-    if (!isValidUUID(afpKey)) {
-      console.log("🚫 [NOVIBET] t1 não é UUID válido, ignorando:", afpKey || "(vazio)");
+   // === NOVA VALIDAÇÃO (ACEITA RAVENTRACK) ===
+    const isIdValido = afpKey && afpKey.length > 2 && /^[a-zA-Z0-9_-]+$/.test(afpKey);
+
+    if (!isIdValido) {
+      console.log("🚫 [NOVIBET] ID inválido ou vazio, ignorando:", afpKey || "(vazio)");
       return res.json({
         ok: true,
         filtered: true,
-        reason: "t1_not_valid_uuid",
+        reason: "id_invalid_format",
         t1: afpKey || null,
       });
     }
+    // ==========================================
 
     console.log("✅ [NOVIBET] t1 é UUID válido, processando depósito:", afpKey);
 
