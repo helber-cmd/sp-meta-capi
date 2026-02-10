@@ -836,7 +836,8 @@ app.post("/novibet/registro", async (req, res) => {
     const data = { ...req.query, ...req.body };
 
     // ✅ Suportar: tracking_tag (oficial), t1 (legado), s2 (backup)
-    const afpKey = cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.s2) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
+    // PRIORIDADE ALTERADA: s2 (Lead/Contact ID) vem antes da tracking_tag
+    const afpKey = cleanStr(data.s2) || cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
 
    // === NOVA VALIDAÇÃO (ACEITA RAVENTRACK) ===
     // Aceita letras, números, traço e underline (ex: 2007430_8400875089)
@@ -970,7 +971,8 @@ app.post("/novibet/deposito", async (req, res) => {
     const data = { ...req.query, ...req.body };
 
     // ✅ Suportar: tracking_tag (oficial), t1 (legado), s2 (backup)
-    const afpKey = cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.s2) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
+    // PRIORIDADE ALTERADA: s2 (Lead/Contact ID) vem antes da tracking_tag
+    const afpKey = cleanStr(data.s2) || cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
 
    // === NOVA VALIDAÇÃO (ACEITA RAVENTRACK) ===
     const isIdValido = afpKey && afpKey.length > 2 && /^[a-zA-Z0-9_-]+$/.test(afpKey);
