@@ -930,6 +930,7 @@ app.post("/novibet/registro", async (req, res) => {
  * URL: POST /novibet/deposito
  */
 // --- NOVIBET DEPOSITO (ATUALIZADO v3 - FTD REAL) ---
+// --- NOVIBET DEPOSITO (FTD PELO BANCO DE DADOS) ---
 app.post("/novibet/deposito", async (req, res) => {
   try {
     console.log("🔥 /novibet/deposito");
@@ -940,27 +941,28 @@ app.post("/novibet/deposito", async (req, res) => {
     // Se não tem nem UUID nem PlayerID, não dá pra rastrear
     if ((!afpKey || afpKey.length < 3) && !playerId) return res.json({ ok: true, filtered: true });
 
-    // 1. BUSCA INTELIGENTE (Usa o PlayerID se o link quebrou)
+    // 1. BUSCA INTELIGENTE (Pelo UUID ou PlayerID)
     const context = await getLeadContextSmart(afpKey, playerId);
 
     // 2. DECISÃO: FTD ou REDEPÓSITO?
     let eventType = "redeposito";
-    let metaEventName = "Purchase"; // Redepósito vira Purchase (Compra)
+    let metaEventName = "Purchase"; // Padrão: Compra (LTV)
 
     if (context) {
+      // AQUI ESTÁ A MÁGICA: O banco decide, não a Novibet
       if (context.has_deposited === false) {
-        // É O PRIMEIRO DEPÓSITO DELE!
+        // É O PRIMEIRO!
         eventType = "ftd";
-        metaEventName = "ftd_novibet";
+        metaEventName = "ftd_novibet"; // Nome do evento no Facebook
         
-        // Marca o crachá no banco
+        // Marca no banco que agora ele já é cliente antigo
         await prisma.leadContext.update({ where: { id: context.id }, data: { has_deposited: true } });
-        console.log(`💎 NOVO FTD IDENTIFICADO: ${playerId}`);
+        console.log(`💎 [FTD DETECTADO] Primeira vez do Player: ${playerId}`);
       } else {
-        console.log(`💰 REDEPÓSITO IDENTIFICADO: ${playerId}`);
+        console.log(`💰 [RE-DEPÓSITO] Cliente recorrente: ${playerId}`);
       }
     } else {
-      // Sem contexto, confia na Novibet (Fallback)
+      // Se não achou no banco, tenta confiar na Novibet (Fallback)
       const isNovibetFtd = data.is_ftd === "true" || data.is_ftd === true || data.status === "ftd";
       eventType = isNovibetFtd ? "ftd" : "redeposito";
       metaEventName = isNovibetFtd ? "ftd_novibet" : "Purchase";
@@ -977,7 +979,6 @@ app.post("/novibet/deposito", async (req, res) => {
         client_user_agent: context?.client_user_agent || getUserAgent(req),
         external_id: afpKey ? sha256(afpKey) : undefined,
         fbp: context?.fbp || cleanStr(data.fbp),
-        // AQUI ESTÁ O SEGREDO: Recupera o FBC do banco se o link veio vazio
         fbc: context?.fbc || cleanStr(data.fbc) 
       },
       custom_data: { 
@@ -988,7 +989,7 @@ app.post("/novibet/deposito", async (req, res) => {
 
     const metaResp = await sendToMeta(event, 2);
     
-    // Salva no Placar com o tipo correto e MOSTRA O PLACAR
+    // Salva e Mostra Placar
     await prisma.eventLog.create({ data: { type: eventType, provider: "novibet" } });
     await imprimirPlacar(); 
 
