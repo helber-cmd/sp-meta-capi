@@ -33,3 +33,11 @@ model LeadContext {
   @@index([afp])
   @@index([createdAt])
 }
+
+// Tabela para o Placar no Log
+model EventLog {
+  id        String   @id @default(uuid())
+  type      String   // "registro" ou "deposito"
+  provider  String   // "novibet"
+  createdAt DateTime @default(now())
+}
