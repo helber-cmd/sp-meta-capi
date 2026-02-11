@@ -80,9 +80,30 @@ const prisma = new PrismaClient();
 
 const app = express();
 // --- PLACAR TURBINADO (DATA + HISTÓRICO) ---
-async function placar() {
+// =========================
+// HELPERS (Busca Inteligente & Placar)
+// =========================
+
+// 1. Busca Inteligente: Tenta pelo UUID (s2) -> Se falhar, tenta pelo Player ID
+async function getLeadContextSmart(afp, playerId) {
   try {
-    // Pega data de 3 dias atrás para gerar histórico
+    let context = null;
+    // Tenta pelo UUID (s2)
+    if (afp && afp.length > 10) {
+       context = await prisma.leadContext.findUnique({ where: { lead_id: afp } });
+    }
+    // Tenta pelo Player ID (se não achou pelo UUID)
+    if (!context && playerId) {
+      context = await prisma.leadContext.findUnique({ where: { player_id: String(playerId) } });
+      if (context) console.log(`✅ [MATCH] Contexto encontrado via Player ID: ${playerId}`);
+    }
+    return context;
+  } catch (e) { console.error("❌ Erro busca contexto:", e.message); return null; }
+}
+
+// 2. Placar Financeiro (Com FTD vs Redepósito)
+async function imprimirPlacar() {
+  try {
     const dataLimite = new Date();
     dataLimite.setDate(dataLimite.getDate() - 3);
 
@@ -91,31 +112,24 @@ async function placar() {
       orderBy: { createdAt: 'desc' }
     });
 
-    // Agrupa os dados por dia (Ex: 10/02/2026)
     const resumo = {};
-    logs.forEach(log => {
-      // Ajusta para o horário do Brasil (gambiarra simples para log)
+    for (const log of logs) {
       const dataFormatada = new Date(log.createdAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-      
-      if (!resumo[dataFormatada]) resumo[dataFormatada] = { registro: 0, deposito: 0 };
+      if (!resumo[dataFormatada]) resumo[dataFormatada] = { registro: 0, ftd: 0, redeposito: 0 };
       
       if (log.type === 'registro') resumo[dataFormatada].registro++;
-      if (log.type === 'deposito') resumo[dataFormatada].deposito++;
-    });
+      if (log.type === 'ftd') resumo[dataFormatada].ftd++;
+      if (log.type === 'redeposito') resumo[dataFormatada].redeposito++;
+    }
 
-    console.log(`\n📊 === RELATÓRIO NOVIBET (Últimos Dias) ===`);
+    console.log(`\n📊 === RELATÓRIO NOVIBET (Financeiro) ===`);
     Object.keys(resumo).forEach(dia => {
-      const r = resumo[dia].registro;
-      const d = resumo[dia].deposito;
-      console.log(`📅 ${dia}:  ${r} Registros  |  💰 ${d} Depósitos`);
+      const { registro, ftd, redeposito } = resumo[dia];
+      console.log(`📅 ${dia}:  ${registro} Regs  |  💎 ${ftd} FTDs  |  💰 ${redeposito} Re-depósitos`);
     });
     console.log(`============================================\n`);
-
-  } catch (e) {
-    console.log("Erro no placar:", e.message);
-  }
+  } catch (e) { console.log("Erro placar:", e.message); }
 }
-
 // IMPORTANT: atrás do Render/proxy, isso melhora req.ip e headers
 app.set("trust proxy", true);
 
@@ -861,282 +875,125 @@ app.get("/smartico/postback", async (req, res) => {
  * Endpoint para Registro da Novibet
  * URL: POST /novibet/registro
  */
+// --- NOVIBET REGISTRO (ATUALIZADO v3) ---
 app.post("/novibet/registro", async (req, res) => {
   try {
-    console.log("🔥 /novibet/registro RECEBIDO");
-    console.log("🕒", new Date().toISOString());
-    console.log("📦 Body:", JSON.stringify(req.body || {}));
-    console.log("🔎 Query:", JSON.stringify(req.query || {}));
-
-    // Novibet pode enviar via body ou query
+    console.log("🔥 /novibet/registro");
     const data = { ...req.query, ...req.body };
-
-    // ✅ Suportar: tracking_tag (oficial), t1 (legado), s2 (backup)
-    // PRIORIDADE ALTERADA: s2 (Lead/Contact ID) vem antes da tracking_tag
-    const afpKey = cleanStr(data.s2) || cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
-
-   // === NOVA VALIDAÇÃO (ACEITA RAVENTRACK) ===
-    // Aceita letras, números, traço e underline (ex: 2007430_8400875089)
-    const isIdValido = afpKey && afpKey.length > 2 && /^[a-zA-Z0-9_-]+$/.test(afpKey);
-
-    if (!isIdValido) {
-      console.log("🚫 [NOVIBET] ID inválido ou vazio, ignorando:", afpKey || "(vazio)");
-      return res.json({
-        ok: true,
-        filtered: true,
-        reason: "id_invalid_format",
-        t1: afpKey || null,
-      });
-    }
-    // ==========================================
-
-    console.log("✅ [NOVIBET] t1 é UUID válido, processando registro:", afpKey);
-
-    // Buscar contexto salvo
-    const savedContext = await getLeadContextByAfp(afpKey);
-    const hasContext = !!savedContext;
-
-    console.log("📊 [MATCH]", hasContext ? "Contexto encontrado no banco" : "Usando dados do postback (fallback)");
-
-    const metaEventName = NOVIBET_EVENT_MAP.registro;
     
-    // ✅ Suportar ambos: action_date (oficial Y-m-d) e timestamp (legado Unix)
-    let event_time;
-    if (data.action_date) {
-      // Converter Y-m-d para timestamp Unix
-      event_time = Math.floor(new Date(data.action_date).getTime() / 1000);
-    } else {
-      event_time = parseInt(data.timestamp) || Math.floor(Date.now() / 1000);
-    }
+    // Captura os IDs
+    const afpKey = cleanStr(data.s2) || cleanStr(data.tracking_tag) || cleanStr(data.t1) || "";
+    const playerId = cleanStr(data.player_id) || cleanStr(data.registration_id);
+
+    if (!afpKey || afpKey.length < 3) return res.json({ ok: true, filtered: true });
+
+    // Busca contexto existente (usando a nova função inteligente)
+    const context = await getLeadContextSmart(afpKey, playerId);
     
-    const baseId = cleanStr(data.player_id) || cleanStr(data.registration_id) || afpKey || crypto.randomUUID();
-    const event_id = `${baseId}_${metaEventName}`;
-
-    // Prioridade: banco > postback
-    const fbp = cleanStr(savedContext?.fbp) || cleanStr(data.fbp);
-    const fbc = cleanStr(savedContext?.fbc) || cleanStr(data.fbc);
-    const fbclid = cleanStr(savedContext?.fbclid) || cleanStr(data.fbclid);
-    const external_id = afpKey ? sha256(afpKey) : undefined;
-
-    const utm_source = cleanStr(savedContext?.utm_source) || cleanStr(data.utm_source);
-    const utm_medium = cleanStr(savedContext?.utm_medium) || cleanStr(data.utm_medium);
-    const utm_campaign = cleanStr(savedContext?.utm_campaign) || cleanStr(data.utm_campaign);
-    const utm_content = cleanStr(savedContext?.utm_content) || cleanStr(data.utm_content);
-
-    const client_ip = cleanStr(savedContext?.client_ip_address) || cleanStr(getClientIp(req));
-    const client_ua = cleanStr(savedContext?.client_user_agent) || cleanStr(getUserAgent(req));
+    // --- O PULO DO GATO: VINCULAR PLAYER ID AO UUID ---
+    if (context && playerId && context.player_id !== playerId) {
+      try {
+        await prisma.leadContext.update({
+          where: { id: context.id },
+          data: { player_id: String(playerId) }
+        });
+        console.log(`🔗 VÍNCULO CRIADO: UUID ${context.lead_id} <-> Player ${playerId}`);
+      } catch (err) { console.log("Aviso: Player ID já existe em outro lead ou erro banco."); }
+    }
 
     const event = {
-      event_name: metaEventName,
-      event_time,
-      action_source: "website",
-      event_id,
+      event_name: "Registro_novibet", 
+      event_time: Math.floor(Date.now()/1000), action_source: "website",
+      event_id: `${playerId || afpKey}_Registro_novibet`,
       user_data: {
-        client_ip_address: client_ip,
-        client_user_agent: client_ua,
-        external_id,
-        fbp,
-        fbc,
+        client_ip_address: context?.client_ip_address || getClientIp(req),
+        client_user_agent: context?.client_user_agent || getUserAgent(req),
+        external_id: afpKey ? sha256(afpKey) : undefined,
+        fbp: context?.fbp || cleanStr(data.fbp),
+        fbc: context?.fbc || cleanStr(data.fbc)
       },
-      custom_data: {
-        origem: "novibet",
-        context_matched: hasContext,
-        vendor_id: cleanStr(data.vendor_id),
-        action: cleanStr(data.action) || "registration",
-        player_id: cleanStr(data.player_id),
-        registration_id: cleanStr(data.registration_id),
-        country_code: cleanStr(data.country_code),
-        brand: cleanStr(data.brand),
-        currency: cleanStr(data.currency) || "BRL",
-        promo_code: cleanStr(data.promo_code),
-        tracking_tag: afpKey,
-        // Parâmetros customizados (c1-c5)
-        c1: cleanStr(data.c1),
-        c2: cleanStr(data.c2),
-        c3: cleanStr(data.c3),
-        c4: cleanStr(data.c4),
-        c5: cleanStr(data.c5),
-        // Sub source tagging (s1-s3) - Analytics
-        s1: cleanStr(data.s1),
-        s2: cleanStr(data.s2),
-        s3: cleanStr(data.s3),
-        // Transaction tagging (t2-t3) - Pixels/Exports (t1 é tracking_tag)
-        t2: cleanStr(data.t2),
-        t3: cleanStr(data.t3),
-        // UTMs
-        utm_source,
-        utm_medium,
-        utm_campaign,
-        utm_content,
-        fbclid,
-      },
+      custom_data: { origem: "novibet", player_id: playerId, utm_source: context?.utm_source || cleanStr(data.utm_source) }
     };
 
-    console.log("🚀 Enviando Novibet Registro -> Meta (SLOT2):", JSON.stringify(event, null, 2));
-
-    // Novibet sempre vai para SLOT2
     const metaResp = await sendToMeta(event, 2);
-    console.log("✅ Meta OK:", JSON.stringify(metaResp));
-    // COLE ISSO AQUI 👇
+    
+    // Loga e Atualiza Placar
     await prisma.eventLog.create({ data: { type: "registro", provider: "novibet" } });
-    placar();
+    await imprimirPlacar(); 
 
-    res.json({
-      ok: true,
-      event_type: "registro",
-      event_name: metaEventName,
-      event_id,
-      slot: 2,
-      context_matched: hasContext,
-      meta: metaResp,
-    });
-  } catch (err) {
-    console.error("❌ /novibet/registro ERROR:", err?.message || err);
-    res.status(500).json({ ok: false, error: String(err?.message || err) });
-  }
+    res.json({ ok: true, meta: metaResp });
+  } catch (e) { console.error("Reg Error:", e.message); res.status(500).json({ error: e.message }); }
 });
 
 /**
  * Endpoint para Depósito da Novibet
  * URL: POST /novibet/deposito
  */
+// --- NOVIBET DEPOSITO (ATUALIZADO v3 - FTD REAL) ---
 app.post("/novibet/deposito", async (req, res) => {
   try {
-    console.log("🔥 /novibet/deposito RECEBIDO");
-    console.log("🕒", new Date().toISOString());
-    console.log("📦 Body:", JSON.stringify(req.body || {}));
-    console.log("🔎 Query:", JSON.stringify(req.query || {}));
-
+    console.log("🔥 /novibet/deposito");
     const data = { ...req.query, ...req.body };
+    const afpKey = cleanStr(data.s2) || cleanStr(data.tracking_tag) || cleanStr(data.t1) || "";
+    const playerId = cleanStr(data.player_id) || cleanStr(data.registration_id);
 
-    // ✅ Suportar: tracking_tag (oficial), t1 (legado), s2 (backup)
-    // PRIORIDADE ALTERADA: s2 (Lead/Contact ID) vem antes da tracking_tag
-    const afpKey = cleanStr(data.s2) || cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.subid) || cleanStr(data.click_id) || "";
+    // Se não tem nem UUID nem PlayerID, não dá pra rastrear
+    if ((!afpKey || afpKey.length < 3) && !playerId) return res.json({ ok: true, filtered: true });
 
-   // === NOVA VALIDAÇÃO (ACEITA RAVENTRACK) ===
-    const isIdValido = afpKey && afpKey.length > 2 && /^[a-zA-Z0-9_-]+$/.test(afpKey);
+    // 1. BUSCA INTELIGENTE (Usa o PlayerID se o link quebrou)
+    const context = await getLeadContextSmart(afpKey, playerId);
 
-    if (!isIdValido) {
-      console.log("🚫 [NOVIBET] ID inválido ou vazio, ignorando:", afpKey || "(vazio)");
-      return res.json({
-        ok: true,
-        filtered: true,
-        reason: "id_invalid_format",
-        t1: afpKey || null,
-      });
-    }
-    // ==========================================
+    // 2. DECISÃO: FTD ou REDEPÓSITO?
+    let eventType = "redeposito";
+    let metaEventName = "Purchase"; // Redepósito vira Purchase (Compra)
 
-    console.log("✅ [NOVIBET] t1 é UUID válido, processando depósito:", afpKey);
-
-    const savedContext = await getLeadContextByAfp(afpKey);
-    const hasContext = !!savedContext;
-
-    console.log("📊 [MATCH]", hasContext ? "Contexto encontrado no banco" : "Usando dados do postback (fallback)");
-
-    // Determinar se é FTD ou depósito normal
-    const isFtd = data.is_ftd === "true" || data.is_ftd === true || data.status === "ftd";
-    const metaEventName = isFtd ? NOVIBET_EVENT_MAP.ftd : NOVIBET_EVENT_MAP.deposito;
-
-    // ✅ Suportar ambos: action_date (oficial Y-m-d) e timestamp (legado Unix)
-    let event_time;
-    if (data.action_date) {
-      event_time = Math.floor(new Date(data.action_date).getTime() / 1000);
+    if (context) {
+      if (context.has_deposited === false) {
+        // É O PRIMEIRO DEPÓSITO DELE!
+        eventType = "ftd";
+        metaEventName = "ftd_novibet";
+        
+        // Marca o crachá no banco
+        await prisma.leadContext.update({ where: { id: context.id }, data: { has_deposited: true } });
+        console.log(`💎 NOVO FTD IDENTIFICADO: ${playerId}`);
+      } else {
+        console.log(`💰 REDEPÓSITO IDENTIFICADO: ${playerId}`);
+      }
     } else {
-      event_time = parseInt(data.timestamp) || Math.floor(Date.now() / 1000);
+      // Sem contexto, confia na Novibet (Fallback)
+      const isNovibetFtd = data.is_ftd === "true" || data.is_ftd === true || data.status === "ftd";
+      eventType = isNovibetFtd ? "ftd" : "redeposito";
+      metaEventName = isNovibetFtd ? "ftd_novibet" : "Purchase";
     }
-    
-    const baseId = cleanStr(data.player_id) || cleanStr(data.registration_id) || afpKey || crypto.randomUUID();
-    const event_id = `${baseId}_${metaEventName}_${event_time}`;
-
-    const fbp = cleanStr(savedContext?.fbp) || cleanStr(data.fbp);
-    const fbc = cleanStr(savedContext?.fbc) || cleanStr(data.fbc);
-    const fbclid = cleanStr(savedContext?.fbclid) || cleanStr(data.fbclid);
-    const external_id = afpKey ? sha256(afpKey) : undefined;
-
-    const utm_source = cleanStr(savedContext?.utm_source) || cleanStr(data.utm_source);
-    const utm_medium = cleanStr(savedContext?.utm_medium) || cleanStr(data.utm_medium);
-    const utm_campaign = cleanStr(savedContext?.utm_campaign) || cleanStr(data.utm_campaign);
-    const utm_content = cleanStr(savedContext?.utm_content) || cleanStr(data.utm_content);
-
-    const client_ip = cleanStr(savedContext?.client_ip_address) || cleanStr(getClientIp(req));
-    const client_ua = cleanStr(savedContext?.client_user_agent) || cleanStr(getUserAgent(req));
 
     const value = parseValue(data.value) ?? parseValue(data.amount) ?? parseValue(data.deposit_amount);
-    const currency = cleanStr(data.currency) || "BRL";
-
+    
     const event = {
-      event_name: metaEventName,
-      event_time,
-      action_source: "website",
-      event_id,
+      event_name: metaEventName, 
+      event_time: Math.floor(Date.now()/1000), action_source: "website",
+      event_id: `${playerId || afpKey}_${metaEventName}_${Math.floor(Date.now()/1000)}`,
       user_data: {
-        client_ip_address: client_ip,
-        client_user_agent: client_ua,
-        external_id,
-        fbp,
-        fbc,
+        client_ip_address: context?.client_ip_address || getClientIp(req),
+        client_user_agent: context?.client_user_agent || getUserAgent(req),
+        external_id: afpKey ? sha256(afpKey) : undefined,
+        fbp: context?.fbp || cleanStr(data.fbp),
+        // AQUI ESTÁ O SEGREDO: Recupera o FBC do banco se o link veio vazio
+        fbc: context?.fbc || cleanStr(data.fbc) 
       },
-      custom_data: {
-        origem: "novibet",
-        context_matched: hasContext,
-        is_ftd: isFtd,
-        vendor_id: cleanStr(data.vendor_id),
-        action: cleanStr(data.action) || "deposit",
-        player_id: cleanStr(data.player_id),
-        registration_id: cleanStr(data.registration_id),
-        country_code: cleanStr(data.country_code),
-        brand: cleanStr(data.brand),
-        promo_code: cleanStr(data.promo_code),
-        value: value ?? undefined,
-        currency,
-        tracking_tag: afpKey,
-        // Parâmetros customizados (c1-c5)
-        c1: cleanStr(data.c1),
-        c2: cleanStr(data.c2),
-        c3: cleanStr(data.c3),
-        c4: cleanStr(data.c4),
-        c5: cleanStr(data.c5),
-        // Sub source tagging (s1-s3) - Analytics
-        s1: cleanStr(data.s1),
-        s2: cleanStr(data.s2),
-        s3: cleanStr(data.s3),
-        // Transaction tagging (t2-t3) - Pixels/Exports (t1 é tracking_tag)
-        t2: cleanStr(data.t2),
-        t3: cleanStr(data.t3),
-        // UTMs
-        utm_source,
-        utm_medium,
-        utm_campaign,
-        utm_content,
-        fbclid,
-      },
+      custom_data: { 
+        origem: "novibet", tipo: eventType, value: value, currency: cleanStr(data.currency) || "BRL",
+        utm_source: context?.utm_source || cleanStr(data.utm_source) 
+      }
     };
 
-    console.log("🚀 Enviando Novibet Depósito -> Meta (SLOT2):", JSON.stringify(event, null, 2));
-
-    // Novibet sempre vai para SLOT2
     const metaResp = await sendToMeta(event, 2);
-    console.log("✅ Meta OK:", JSON.stringify(metaResp));
-    // COLE ISSO AQUI 👇
-    await prisma.eventLog.create({ data: { type: "deposito", provider: "novibet" } });
-    placar();
+    
+    // Salva no Placar com o tipo correto e MOSTRA O PLACAR
+    await prisma.eventLog.create({ data: { type: eventType, provider: "novibet" } });
+    await imprimirPlacar(); 
 
-    res.json({
-      ok: true,
-      event_type: isFtd ? "ftd" : "deposito",
-      event_name: metaEventName,
-      event_id,
-      slot: 2,
-      context_matched: hasContext,
-      value,
-      currency,
-      meta: metaResp,
-    });
-  } catch (err) {
-    console.error("❌ /novibet/deposito ERROR:", err?.message || err);
-    res.status(500).json({ ok: false, error: String(err?.message || err) });
-  }
+    res.json({ ok: true, type: eventType, meta: metaResp });
+  } catch (e) { console.error("Dep Error:", e.message); res.status(500).json({ error: e.message }); }
 });
 
 // =========================
