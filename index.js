@@ -79,22 +79,38 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 const app = express();
-// --- FUNÇÃO DO PLACAR (Adicione isso no topo) ---
-async function imprimirPlacar() {
+// --- PLACAR TURBINADO (DATA + HISTÓRICO) ---
+async function placar() {
   try {
-    // Pega o dia de hoje (UTC 00:00)
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+    // Pega data de 3 dias atrás para gerar histórico
+    const dataLimite = new Date();
+    dataLimite.setDate(dataLimite.getDate() - 3);
 
-    const regs = await prisma.eventLog.count({
-      where: { type: "registro", provider: "novibet", createdAt: { gte: hoje } }
+    const logs = await prisma.eventLog.findMany({
+      where: { provider: "novibet", createdAt: { gte: dataLimite } },
+      orderBy: { createdAt: 'desc' }
     });
 
-    const deps = await prisma.eventLog.count({
-      where: { type: "deposito", provider: "novibet", createdAt: { gte: hoje } }
+    // Agrupa os dados por dia (Ex: 10/02/2026)
+    const resumo = {};
+    logs.forEach(log => {
+      // Ajusta para o horário do Brasil (gambiarra simples para log)
+      const dataFormatada = new Date(log.createdAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      
+      if (!resumo[dataFormatada]) resumo[dataFormatada] = { registro: 0, deposito: 0 };
+      
+      if (log.type === 'registro') resumo[dataFormatada].registro++;
+      if (log.type === 'deposito') resumo[dataFormatada].deposito++;
     });
 
-    console.log(`\n📊 [PLACAR HOJE] Registros: ${regs} | Depósitos: ${deps}\n`);
+    console.log(`\n📊 === RELATÓRIO NOVIBET (Últimos Dias) ===`);
+    Object.keys(resumo).forEach(dia => {
+      const r = resumo[dia].registro;
+      const d = resumo[dia].deposito;
+      console.log(`📅 ${dia}:  ${r} Registros  |  💰 ${d} Depósitos`);
+    });
+    console.log(`============================================\n`);
+
   } catch (e) {
     console.log("Erro no placar:", e.message);
   }
