@@ -79,6 +79,26 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 const app = express();
+// --- FUNÇÃO DO PLACAR (Adicione isso no topo) ---
+async function imprimirPlacar() {
+  try {
+    // Pega o dia de hoje (UTC 00:00)
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const regs = await prisma.eventLog.count({
+      where: { type: "registro", provider: "novibet", createdAt: { gte: hoje } }
+    });
+
+    const deps = await prisma.eventLog.count({
+      where: { type: "deposito", provider: "novibet", createdAt: { gte: hoje } }
+    });
+
+    console.log(`\n📊 [PLACAR HOJE] Registros: ${regs} | Depósitos: ${deps}\n`);
+  } catch (e) {
+    console.log("Erro no placar:", e.message);
+  }
+}
 
 // IMPORTANT: atrás do Render/proxy, isso melhora req.ip e headers
 app.set("trust proxy", true);
@@ -941,6 +961,9 @@ app.post("/novibet/registro", async (req, res) => {
     // Novibet sempre vai para SLOT2
     const metaResp = await sendToMeta(event, 2);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
+    // COLE ISSO AQUI 👇
+    await prisma.eventLog.create({ data: { type: "registro", provider: "novibet" } });
+    placar();
 
     res.json({
       ok: true,
@@ -1079,6 +1102,9 @@ app.post("/novibet/deposito", async (req, res) => {
     // Novibet sempre vai para SLOT2
     const metaResp = await sendToMeta(event, 2);
     console.log("✅ Meta OK:", JSON.stringify(metaResp));
+    // COLE ISSO AQUI 👇
+    await prisma.eventLog.create({ data: { type: "deposito", provider: "novibet" } });
+    placar();
 
     res.json({
       ok: true,
