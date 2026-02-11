@@ -11,29 +11,37 @@ model LeadContext {
   id        String   @id @default(uuid())
   lead_id   String   @unique
   afp       String?  
+  
+  // --- NOVOS CAMPOS ---
+  player_id     String?  @unique // Guarda o ID da Novibet (ex: 2007430)
+  has_deposited Boolean  @default(false) // Crachá: Já depositou antes?
+  // --------------------
 
-  // cookies/ids
-  fbp       String?
-  fbc       String?
-  fbclid    String?
-
-  // utms
-  utm_source   String?
-  utm_medium   String?
-  utm_campaign String?
-  utm_content  String?
-
-  // device
-  client_ip_address   String?
-  client_user_agent   String?
+  fbp           String?
+  fbc           String?
+  fbclid        String?
+  utm_source    String?
+  utm_medium    String?
+  utm_campaign  String?
+  utm_content   String?
+  client_ip_address String?
+  client_user_agent String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([afp])
+  @@index([player_id]) // Index para busca rápida no depósito
   @@index([createdAt])
 }
 
+// O model EventLog continua igual, não precisa mexer se já tem
+model EventLog {
+  id        String   @id @default(uuid())
+  type      String   // "registro", "ftd", "redeposito"
+  provider  String   // "novibet"
+  createdAt DateTime @default(now())
+}
 // Tabela para o Placar no Log
 model EventLog {
   id        String   @id @default(uuid())
