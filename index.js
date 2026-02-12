@@ -686,21 +686,25 @@ app.get("/smartico/postback", async (req, res) => {
 /**
  * Endpoint para Registro da Novibet (SAFE VERSION)
  */
+// --- REGISTRO COM LOG DEDO-DURO ---
 app.post("/novibet/registro", async (req, res) => {
   try {
-    console.log("🔥 /novibet/registro");
+    // 🚨 O GRITO: Isso vai destacar o evento no meio do log
+    console.log("\n---------------------------------------------------------");
+    console.log("🚨 [SISTEMA] NOVO REGISTRO DETECTADO NA PORTA");
     const data = { ...req.query, ...req.body };
-    
-    // Captura os IDs (Adicionei afp aqui para garantir)
-    const afpKey = cleanStr(data.s2) || cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.afp) || cleanStr(data.click_id) || "";
+    console.log("📦 DADOS BRUTOS RECEBIDOS:", JSON.stringify(data, null, 2));
+    console.log("---------------------------------------------------------\n");
+
+    const afpKey = cleanStr(data.s2) || cleanStr(data.tracking_tag) || cleanStr(data.t1) || cleanStr(data.afp) || "";
     const playerId = cleanStr(data.player_id) || cleanStr(data.registration_id);
 
-    if ((!afpKey || afpKey.length < 3) && !playerId) return res.json({ ok: true, filtered: true });
+    if ((!afpKey || afpKey.length < 3) && !playerId) {
+       console.log("⚠️ Registro ignorado: Sem IDs válidos no pacote.");
+       return res.json({ ok: true, filtered: true });
+    }
 
-    // Busca contexto (Função segura sem player_id)
     const context = await getLeadContextSmart(afpKey, playerId);
-    
-    // REMOVIDO: Tentativa de salvar player_id no banco (evita crash)
 
     const event = {
       event_name: "Registro_novibet", 
@@ -718,20 +722,19 @@ app.post("/novibet/registro", async (req, res) => {
         origem: "novibet", 
         player_id: playerId, 
         utm_source: context?.utm_source || cleanStr(data.utm_source),
-        // Mantém envio das tags originais
-        s1: cleanStr(data.s1), s2: cleanStr(data.s2), s3: cleanStr(data.s3),
-        c1: cleanStr(data.c1), c2: cleanStr(data.c2)
+        s1: cleanStr(data.s1), s2: cleanStr(data.s2), s3: cleanStr(data.s3)
       }
     };
 
-    const metaResp = await sendToMeta(event, 2);
-    
-    // Loga e Atualiza Placar
+    await sendToMeta(event, 2);
     await prisma.eventLog.create({ data: { type: "registro", provider: "novibet" } });
     await placar(); 
 
-    res.json({ ok: true, meta: metaResp });
-  } catch (e) { console.error("Reg Error:", e.message); res.status(500).json({ error: e.message }); }
+    res.json({ ok: true });
+  } catch (e) { 
+    console.error("❌ Erro na Rota de Registro:", e.message); 
+    res.status(500).json({ error: e.message }); 
+  }
 });
 
 /**
