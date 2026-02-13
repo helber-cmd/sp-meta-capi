@@ -541,7 +541,7 @@ app.post("/novibet/registro", async (req, res) => {
     console.log(`✅ [FILTRO NOVIBET] Registro APROVADO! Processando...`);
     console.log("---------------------------------------------------------\n");
 
-    const afpKey = cleanStr(data.s1) || cleanStr(data.s2) || cleanStr(data.s3) || cleanStr(data.tracking_tag) || "";
+    const afpKey = cleanStr(data.s1) || cleanStr(data.s2) || cleanStr(data.tracking_tag) || "";
     const playerId = cleanStr(data.player_id) || cleanStr(data.registration_id);
     const context = await getLeadContextSmart(afpKey, playerId);
 
