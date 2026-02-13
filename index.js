@@ -138,9 +138,6 @@ setInterval(relatorioGeral, 60 * 60 * 1000);
 app.set("trust proxy", true);
 app.use(express.json({ limit: "2mb" }));
 
-app.set("trust proxy", true);
-app.use(express.json({ limit: "2mb" }));
-
 const META_API_VERSION = process.env.META_API_VERSION || "v20.0";
 const DEFAULT_ACTION_SOURCE = process.env.META_ACTION_SOURCE || "chat";
 
