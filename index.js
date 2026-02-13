@@ -77,31 +77,6 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 const app = express();
 
-// --- PLACAR TURBINADO (DATA + HISTÓRICO) ---
-async function placar() {
-  try {
-    const dataLimite = new Date();
-    dataLimite.setDate(dataLimite.getDate() - 3);
-    const logs = await prisma.eventLog.findMany({
-      where: { provider: "novibet", createdAt: { gte: dataLimite } },
-      orderBy: { createdAt: 'desc' }
-    });
-    const resumo = {};
-    for (const log of logs) {
-      const dataFormatada = new Date(log.createdAt).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-      if (!resumo[dataFormatada]) resumo[dataFormatada] = { registro: 0, deposito: 0, ftd: 0 };
-      if (log.type === 'registro') resumo[dataFormatada].registro++;
-      if (log.type === 'deposito') resumo[dataFormatada].deposito++;
-      if (log.type === 'ftd') resumo[dataFormatada].ftd++;
-    }
-    console.log(`\n📊 === RELATÓRIO NOVIBET (Últimos Dias) ===`);
-    Object.keys(resumo).forEach(dia => {
-      const { registro, deposito, ftd } = resumo[dia];
-      console.log(`📅 ${dia}:  ${registro} Regs  |  💎 ${ftd} FTDs  |  💰 ${deposito} Deps`);
-    });
-    console.log(`============================================\n`);
-  } catch (e) { console.log("Erro placar:", e.message); }
-}
 // --- RELATÓRIO GERAL (SENDPULSE + NOVIBET) ---
 async function relatorioGeral() {
   try {
@@ -538,7 +513,7 @@ app.get("/esportivabet/postback", async (req, res) => {
 });
 
 // =====================================================================
-// NOVIBET REGISTRO (DEDO DURO - ENVIANDO TUDO SEM FILTRO)
+// NOVIBET REGISTRO (AGORA COM FILTRO DE QUALIDADE)
 // =====================================================================
 app.post("/novibet/registro", async (req, res) => {
   try {
@@ -546,6 +521,13 @@ app.post("/novibet/registro", async (req, res) => {
     console.log("🚨 [SISTEMA] NOVO REGISTRO DETECTADO NA PORTA");
     const data = { ...req.query, ...req.body };
     console.log("📦 DADOS BRUTOS RECEBIDOS (REGISTRO):", JSON.stringify(data, null, 2));
+
+    // ✅ FILTRO DE QUALIDADE: Apenas eventos com s3="pilhado" são processados.
+    if (data.s3 !== "pilhado") {
+      console.log(`🚫 [FILTRO NOVIBET] Registro ignorado. s3: "${data.s3}". Esperado: "pilhado".`);
+      return res.json({ ok: true, filtered: true, reason: "s3_mismatch" });
+    }
+    console.log(`✅ [FILTRO NOVIBET] Registro APROVADO! Processando...`);
     console.log("---------------------------------------------------------\n");
 
     const afpKey = cleanStr(data.s1) || cleanStr(data.s2) || cleanStr(data.s3) || cleanStr(data.tracking_tag) || "";
@@ -565,22 +547,27 @@ app.post("/novibet/registro", async (req, res) => {
     };
     await sendToMeta(event, 2);
     await prisma.eventLog.create({ data: { type: "registro", provider: "novibet" } });
-    await placar();
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // =====================================================================
-// NOVIBET DEPOSITO (DEDO DURO - ENVIANDO TUDO SEM FILTRO)
+// NOVIBET DEPOSITO (AGORA COM FILTRO DE QUALIDADE)
 // =====================================================================
 app.post("/novibet/deposito", async (req, res) => {
   try {
     console.log("\n---------------------------------------------------------");
-    console.log("🚨 [SISTEMA] NOVO DEPÓSITO DETECTADO NA PORTA");
+    console.log("💰 [SISTEMA] NOVO DEPÓSITO DETECTADO NA PORTA");
     const data = { ...req.query, ...req.body };
     console.log("📦 DADOS BRUTOS RECEBIDOS (DEPÓSITO):", JSON.stringify(data, null, 2));
-    console.log("---------------------------------------------------------\n");
 
+    // ✅ FILTRO DE QUALIDADE: Apenas eventos com s3="pilhado" são processados.
+    if (data.s3 !== "pilhado") {
+      console.log(`🚫 [FILTRO NOVIBET] Depósito ignorado. s3: "${data.s3}". Esperado: "pilhado".`);
+      return res.json({ ok: true, filtered: true, reason: "s3_mismatch" });
+    }
+    console.log(`✅ [FILTRO NOVIBET] Depósito APROVADO! Processando...`);
+    console.log("---------------------------------------------------------\n");
     const afpKey = cleanStr(data.s1) || cleanStr(data.s2) || cleanStr(data.s3) || cleanStr(data.tracking_tag) || "";
     const playerId = cleanStr(data.player_id) || cleanStr(data.registration_id);
     const context = await getLeadContextSmart(afpKey, playerId);
@@ -602,7 +589,6 @@ app.post("/novibet/deposito", async (req, res) => {
     };
     await sendToMeta(event, 2);
     await prisma.eventLog.create({ data: { type: isFtd ? "ftd" : "deposito", provider: "novibet" } });
-    await placar();
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -618,5 +604,4 @@ app.get("/relatorio", async (req, res) => {
 const port = process.env.PORT || 10000;
 app.listen(port, () => {
   console.log(`🚀 v2.0.0 listening on port ${port}`);
-  placar();
 });
