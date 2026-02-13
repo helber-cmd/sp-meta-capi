@@ -250,7 +250,11 @@ async function getLeadContextSmart(afp, playerId) {
        if (context) return context;
     }
     return null;
-  } catch (e) { return null; }
+  } catch (e) {
+    // AGORA ELE AVISA DO ERRO!
+    console.error(`❌ [getLeadContextSmart] Erro CRÍTICO ao buscar contexto para afp ${afp} / playerId ${playerId}:`, e.message);
+    return null; 
+  }
 }
 
 async function sendToPixel(event, pixelId, accessToken) {
@@ -311,24 +315,36 @@ async function sendToMeta(event, slotNumber = null) {
   return results;
 }
 
-
 async function saveLeadContext(data) {
   try {
     const { lead_id, afp, fbp, fbc, fbclid, utm_source, utm_medium, utm_campaign, utm_content, client_ip_address, client_user_agent } = data;
-    if (!lead_id) return null;
-    return await prisma.leadContext.upsert({
+    if (!lead_id) {
+        console.warn("⚠️ [saveLeadContext] Tentativa de salvar contexto sem lead_id. Pulando.");
+        return null;
+    }
+    const saved = await prisma.leadContext.upsert({
       where: { lead_id },
       update: { afp, fbp, fbc, fbclid, utm_source, utm_medium, utm_campaign, utm_content, client_ip_address, client_user_agent },
       create: { lead_id, afp, fbp, fbc, fbclid, utm_source, utm_medium, utm_campaign, utm_content, client_ip_address, client_user_agent },
     });
-  } catch (err) { return null; }
+    // Log de sucesso removido para não poluir, o importante é o erro.
+    return saved;
+  } catch (err) {
+    // AGORA ELE AVISA DO ERRO!
+    console.error(`❌ [saveLeadContext] Erro CRÍTICO ao salvar contexto para lead_id ${data.lead_id}:`, err.message);
+    return null; 
+  }
 }
 
 async function getLeadContextByAfp(afp) {
   try {
     if (!afp) return null;
     return await prisma.leadContext.findFirst({ where: { afp } });
-  } catch (err) { return null; }
+  } catch (err) {
+    // AGORA ELE AVISA DO ERRO!
+    console.error(`❌ [getLeadContextByAfp] Erro CRÍTICO ao buscar contexto para afp ${afp}:`, err.message);
+    return null; 
+  }
 }
 // --- FUNÇÃO QUE ESTAVA FALTANDO ---
 function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
