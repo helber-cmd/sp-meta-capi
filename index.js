@@ -195,6 +195,10 @@ const EVENT_MAP = {
     event_name: "Bilhete_Superbet",
     extra_custom_data: { origem: "whatsapp", produto: "bilhete_superbet" }
   },
+   lead_novi_spodd06: {
+    event_name: "lead_novi_spodd06",
+    extra_custom_data: { origem: "whatsapp", versao: "spodd06" }
+  },
    entrou_vip: { 
     event_name: "NOVI_GOA", 
     extra_custom_data: { origem: "whatsapp", versao: "goa_v1" } 
