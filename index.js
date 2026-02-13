@@ -290,7 +290,42 @@ async function getLeadContextByAfp(afp) {
     return await prisma.leadContext.findFirst({ where: { afp } });
   } catch (err) { return null; }
 }
+// --- FUNÇÃO QUE ESTAVA FALTANDO ---
+function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
+  const email = normalizeEmail(vars.email || vars.em);
+  const phone = normalizePhone(vars.phone || vars.ph || vars.whatsapp);
+  const client_ip = getClientIp(req);
+  const client_ua = getUserAgent(req);
+  const fbp = cleanStr(vars.fbp);
+  const fbc = cleanStr(vars.fbc);
+  
+  // Cria ID único para dedup
+  const event_id = vars.lead_id 
+    ? `${vars.lead_id}_${cfg.event_name}` 
+    : `sp_${telegram_id || Date.now()}_${cfg.event_name}`;
 
+  return {
+    event_name: cfg.event_name,
+    event_time: Math.floor(Date.now() / 1000),
+    action_source: "system_generated",
+    event_id: event_id,
+    user_data: {
+      em: email ? [sha256(email)] : undefined,
+      ph: phone ? [sha256(phone)] : undefined,
+      client_ip_address: client_ip,
+      client_user_agent: client_ua,
+      fbp: fbp,
+      fbc: fbc,
+      external_id: telegram_id ? [sha256(telegram_id)] : undefined
+    },
+    custom_data: {
+      ...cfg.extra_custom_data,
+      lead_id: vars.lead_id,
+      telegram_id: telegram_id,
+      origem_url: vars.origem_url
+    }
+  };
+}
 // =========================
 // SENDPULSE -> META
 // =========================
