@@ -363,7 +363,7 @@ function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
   return {
     event_name: cfg.event_name,
     event_time: Math.floor(Date.now() / 1000),
-    action_source: "system_generated",
+    action_source: "chat",
     event_id: event_id,
     user_data: {
       em: email ? [sha256(email)] : undefined,
