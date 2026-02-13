@@ -77,41 +77,57 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 const app = express();
 
-// --- RELATÓRIO GERAL (SENDPULSE + NOVIBET) ---
+// =========================
+// RELATÓRIO GERAL (VERSÃO CORRIGIDA PARA O DASHBOARD)
+// =========================
 async function relatorioGeral() {
   try {
     const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0); // Zera hora para pegar desde o inicio do dia
-    // Busca contagem agrupada por TIPO de evento
+    hoje.setHours(0, 0, 0, 0);
+
     const stats = await prisma.eventLog.groupBy({
       by: ['type', 'provider'],
-      where: { 
-        createdAt: { gte: hoje } 
-      },
-      _count: { type: true }
+      where: { createdAt: { gte: hoje } },
+      _count: { type: true },
+      orderBy: [{ provider: 'asc' }, { type: 'asc' }]
     });
-    console.log(`\n📊 === RESUMO DO DIA (${hoje.toLocaleDateString('pt-BR')}) ===`);
-    if (stats.length === 0) {
+
+    const dataFormatada = hoje.toLocaleDateString('pt-BR');
+    console.log(`\n📊 === RESUMO DO DIA (${dataFormatada}) ===`);
+
+    // ✅ SEMPRE retorna um objeto com 'totais' sendo um array
+    if (!stats || stats.length === 0) {
       console.log("Nenhum evento registrado hoje ainda.");
-    } else {
-      const sp = stats.filter(s => s.provider === 'sendpulse');
-      const novi = stats.filter(s => s.provider === 'novibet');
-      if (sp.length > 0) {
-        console.log("📱 [SENDPULSE]");
-        sp.forEach(s => console.log(`   - ${s.type.padEnd(25)}: ${s._count.type}`));
-      }
-      
-      if (novi.length > 0) {
-        console.log("🎰 [NOVIBET]");
-        novi.forEach(s => console.log(`   - ${s.type.padEnd(25)}: ${s._count.type}`));
-      }
+      return { hoje: dataFormatada, totais: [] };
+    }
+
+    const totais = stats.map(s => ({
+      provider: s.provider,
+      evento: s.type,
+      contagem: s._count.type
+    }));
+
+    // Logs no console
+    const sp = totais.filter(s => s.provider === 'sendpulse');
+    const novi = totais.filter(s => s.provider === 'novibet');
+    if (sp.length > 0) {
+      console.log("📱 [SENDPULSE]");
+      sp.forEach(s => console.log(`   - ${s.evento.padEnd(25)}: ${s.contagem}`));
+    }
+    if (novi.length > 0) {
+      console.log("🎰 [NOVIBET]");
+      novi.forEach(s => console.log(`   - ${s.evento.padEnd(25)}: ${s.contagem}`));
     }
     console.log("=================================================\n");
-    return stats;
+
+    return { hoje: dataFormatada, totais: totais };
+
   } catch (e) {
-    console.error("Erro no relatório:", e.message);
+    console.error("❌ Erro no relatório:", e.message);
+    return { hoje: new Date().toLocaleDateString('pt-BR'), totais: [], error: e.message };
   }
 }
+
 
 
 // Roda o relatório sozinho a cada 1 hora (para não sujar o log)
@@ -662,9 +678,7 @@ app.get("/dashboard", async (req, res) => {
 
 app.get("/relatorio", async (req, res) => {
   try {
-    // Usamos desestruturação para pegar os 'totais' da nova função
-    const { totais } = await relatorioGeral(); 
-    // Retornamos como 'stats' para manter a compatibilidade se algo usar essa rota
+    const { totais } = await relatorioGeral();
     res.json({ ok: true, stats: totais });
   } catch (e) {
     res.status(500).json({ error: e.message });
