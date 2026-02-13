@@ -261,16 +261,56 @@ async function sendToPixel(event, pixelId, accessToken) {
   return await res.json();
 }
 
+// =========================
+// Rastreamento de Erros de Envio para o Meta
+// =========================
 async function sendToMeta(event, slotNumber = null) {
   const results = { master: null, slot: null };
-  if (PIXEL_MASTER.id) {
-    try { results.master = await sendToPixel(event, PIXEL_MASTER.id, PIXEL_MASTER.token); } catch (err) {}
+
+  // 1. Enviar para Pixel Mestre
+  if (PIXEL_MASTER.id && PIXEL_MASTER.token) {
+    try {
+      console.log(`📤 [MASTER] Enviando evento '${event.event_name}' para pixel mestre...`);
+      results.master = await sendToPixel(event, PIXEL_MASTER.id, PIXEL_MASTER.token);
+      // Verifica se o Facebook retornou um erro na resposta
+      if (results.master.error) {
+          console.error(`❌ [MASTER] Facebook retornou um erro:`, JSON.stringify(results.master.error));
+      } else {
+          console.log(`✅ [MASTER] OK:`, JSON.stringify(results.master));
+      }
+    } catch (err) {
+      // Loga o erro de conexão/fetch
+      console.error(`❌ [MASTER] Erro CRÍTICO ao tentar enviar:`, err.message);
+      results.master = { error: err.message };
+    }
+  } else {
+      console.warn("⚠️ [MASTER] Pixel mestre não configurado. Pulando envio.");
   }
+
+  // 2. Enviar para Slot específico
   if (slotNumber && PIXEL_SLOTS[slotNumber]) {
-    try { results.slot = await sendToPixel(event, PIXEL_SLOTS[slotNumber].id, PIXEL_SLOTS[slotNumber].token); } catch (err) {}
+    const slot = PIXEL_SLOTS[slotNumber];
+    if (slot.id && slot.token) {
+      try {
+        console.log(`📤 [SLOT ${slotNumber}] Enviando evento '${event.event_name}' para ${slot.name}...`);
+        results.slot = await sendToPixel(event, slot.id, slot.token);
+        results.slotName = slot.name;
+        if (results.slot.error) {
+            console.error(`❌ [SLOT ${slotNumber}] Facebook retornou um erro:`, JSON.stringify(results.slot.error));
+        } else {
+            console.log(`✅ [SLOT ${slotNumber}] OK:`, JSON.stringify(results.slot));
+        }
+      } catch (err) {
+        console.error(`❌ [SLOT ${slotNumber}] Erro CRÍTICO ao tentar enviar para ${slot.name}:`, err.message);
+        results.slot = { error: err.message };
+      }
+    } else {
+        console.warn(`⚠️ [SLOT ${slotNumber}] Slot ${slot.name} não configurado corretamente. Pulando envio.`);
+    }
   }
   return results;
 }
+
 
 async function saveLeadContext(data) {
   try {
