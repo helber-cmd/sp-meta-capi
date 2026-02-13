@@ -82,7 +82,6 @@ async function relatorioGeral() {
   try {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0); // Zera hora para pegar desde o inicio do dia
-
     // Busca contagem agrupada por TIPO de evento
     const stats = await prisma.eventLog.groupBy({
       by: ['type', 'provider'],
@@ -91,14 +90,12 @@ async function relatorioGeral() {
       },
       _count: { type: true }
     });
-
     console.log(`\n📊 === RESUMO DO DIA (${hoje.toLocaleDateString('pt-BR')}) ===`);
     if (stats.length === 0) {
       console.log("Nenhum evento registrado hoje ainda.");
     } else {
       const sp = stats.filter(s => s.provider === 'sendpulse');
       const novi = stats.filter(s => s.provider === 'novibet');
-
       if (sp.length > 0) {
         console.log("📱 [SENDPULSE]");
         sp.forEach(s => console.log(`   - ${s.type.padEnd(25)}: ${s._count.type}`));
@@ -115,6 +112,7 @@ async function relatorioGeral() {
     console.error("Erro no relatório:", e.message);
   }
 }
+
 
 // Roda o relatório sozinho a cada 1 hora (para não sujar o log)
 setInterval(relatorioGeral, 60 * 60 * 1000); 
@@ -592,15 +590,87 @@ app.post("/novibet/deposito", async (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+// =========================
+// DASHBOARD DE MÉTRICAS DO DIA
+// =========================
+app.get("/dashboard", async (req, res) => {
+  try {
+    const { hoje, totais, error } = await relatorioGeral();
+
+    if (error) {
+      return res.status(500).send(`<h1>Erro ao gerar dashboard</h1><p>${error}</p>`);
+    }
+
+    // Monta as linhas da tabela HTML
+    const linhasTabela = totais.map(item => `
+      <tr>
+        <td>${item.provider === 'sendpulse' ? '📱' : '🎰'} ${item.provider.toUpperCase()}</td>
+        <td>${item.evento}</td>
+        <td>${item.contagem}</td>
+      </tr>
+    `).join('');
+
+    // Monta a página HTML completa
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Dashboard de Eventos</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
+          .container { max-width: 800px; margin: 20px auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
+          h1 { text-align: center; padding: 20px; background-color: #2c3e50; color: #fff; margin: 0; }
+          h2 { text-align: center; color: #7f8c8d; font-weight: normal; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { padding: 15px; text-align: left; border-bottom: 1px solid #ddd; }
+          th { background-color: #ecf0f1; font-weight: bold; }
+          tr:hover { background-color: #f9f9f9; }
+          .no-data { text-align: center; padding: 40px; color: #95a5a6; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Dashboard de Eventos</h1>
+          <h2>Resumo do Dia: ${hoje}</h2>
+          ${totais.length > 0 ? `
+            <table>
+              <thead>
+                <tr>
+                  <th>Fonte</th>
+                  <th>Evento</th>
+                  <th>Contagem</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${linhasTabela}
+              </tbody>
+            </table>
+          ` : `<p class="no-data">Nenhum evento registrado hoje ainda.</p>`}
+        </div>
+      </body>
+      </html>
+    `;
+
+    res.send(html);
+
+  } catch (e) {
+    res.status(500).send(`<h1>Erro inesperado ao construir a página</h1><p>${e.message}</p>`);
+  }
+});
 
 app.get("/relatorio", async (req, res) => {
-  try {
-    const stats = await relatorioGeral();
-    res.json({ ok: true, stats });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  try {
+    // Usamos desestruturação para pegar os 'totais' da nova função
+    const { totais } = await relatorioGeral(); 
+    // Retornamos como 'stats' para manter a compatibilidade se algo usar essa rota
+    res.json({ ok: true, stats: totais });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
+
 const port = process.env.PORT || 10000;
 app.listen(port, () => {
   console.log(`🚀 v2.0.0 listening on port ${port}`);
