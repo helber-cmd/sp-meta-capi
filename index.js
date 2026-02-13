@@ -128,16 +128,41 @@ const EVENT_SLOT_MAP = {
 };
 
 const EVENT_MAP = {
+  // --- EVENTOS ORIGINAIS ---
   lead_telegram: { event_name: "Lead_Telegram", extra_custom_data: {} },
   registro_casa: { event_name: "Registro_Casa", extra_custom_data: {} },
   grupo_telegram: { event_name: "Grupo_Telegram", extra_custom_data: {} },
+  
   bilhete_mgm: { event_name: "Bilhete_MGM", extra_custom_data: { origem: "telegram", produto: "bilhete_mgm" } },
   bilhete_novibet: { event_name: "Bilhete_Novibet", extra_custom_data: { origem: "telegram", produto: "bilhete_novibet" } },
   bilhete_vupibet: { event_name: "Bilhete_Vupibet", extra_custom_data: { origem: "telegram", produto: "bilhete_vupibet" } },
+  
   bilhete_esportivabet: { event_name: "Bilhete_Esportivabet", extra_custom_data: { origem: "telegram", produto: "bilhete_esportivabet", pixel: "1" } },
   bilhete_esportivabet2: { event_name: "Bilhete_Esportivabet", extra_custom_data: { origem: "telegram", produto: "bilhete_esportivabet", pixel: "2" } },
+  
   lead_whatsapp: { event_name: "Lead_Whatsapp", extra_custom_data: { origem: "whatsapp" } },
   lead_comunidadewpp: { event_name: "Lead_ComunidadeWPP", extra_custom_data: { origem: "whatsapp", etapa: "comunidade" } },
+
+  // --- NOVOS EVENTOS (SUPERBET & MGM) ---
+  superbet_goa_v1: {
+    event_name: "SuperBet_GOA_V1",
+    extra_custom_data: { origem: "whatsapp", versao: "goa_v1" }
+  },
+  
+  superbet_goa_v2: {
+    event_name: "SuperBet_GOA_V2",
+    extra_custom_data: { origem: "whatsapp", versao: "goa_v2" }
+  },
+  
+  mgm_goa_v1: {
+    event_name: "MGM_GOA_V1",
+    extra_custom_data: { origem: "whatsapp", produto: "mgm", versao: "goa_v1" }
+  },
+  
+  bilhete_superbet: {
+    event_name: "Bilhete_Superbet",
+    extra_custom_data: { origem: "whatsapp", produto: "bilhete_superbet" }
+  }
 };
 
 const SMARTICO_EVENT_MAP = { registro: "Registro_vupibet", ftd: "ftd_vupibet", qftd: "qftd_vupibet", deposito: "deposito_vupibet" };
