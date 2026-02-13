@@ -102,6 +102,52 @@ async function placar() {
     console.log(`============================================\n`);
   } catch (e) { console.log("Erro placar:", e.message); }
 }
+// --- RELATÓRIO GERAL (SENDPULSE + NOVIBET) ---
+async function relatorioGeral() {
+  try {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0); // Zera hora para pegar desde o inicio do dia
+
+    // Busca contagem agrupada por TIPO de evento
+    const stats = await prisma.eventLog.groupBy({
+      by: ['type', 'provider'],
+      where: { 
+        createdAt: { gte: hoje } 
+      },
+      _count: { type: true }
+    });
+
+    console.log(`\n📊 === RESUMO DO DIA (${hoje.toLocaleDateString('pt-BR')}) ===`);
+    if (stats.length === 0) {
+      console.log("Nenhum evento registrado hoje ainda.");
+    } else {
+      const sp = stats.filter(s => s.provider === 'sendpulse');
+      const novi = stats.filter(s => s.provider === 'novibet');
+
+      if (sp.length > 0) {
+        console.log("📱 [SENDPULSE]");
+        sp.forEach(s => console.log(`   - ${s.type.padEnd(25)}: ${s._count.type}`));
+      }
+      
+      if (novi.length > 0) {
+        console.log("🎰 [NOVIBET]");
+        novi.forEach(s => console.log(`   - ${s.type.padEnd(25)}: ${s._count.type}`));
+      }
+    }
+    console.log("=================================================\n");
+    return stats;
+  } catch (e) {
+    console.error("Erro no relatório:", e.message);
+  }
+}
+
+// Roda o relatório sozinho a cada 1 hora (para não sujar o log)
+setInterval(relatorioGeral, 60 * 60 * 1000); 
+
+// 👆👆👆 FIM DA COLAGEM 👆👆👆
+
+app.set("trust proxy", true);
+app.use(express.json({ limit: "2mb" }));
 
 app.set("trust proxy", true);
 app.use(express.json({ limit: "2mb" }));
@@ -257,11 +303,20 @@ app.post("/sp/event", async (req, res) => {
     if (!cfg) return res.status(400).json({ ok: false });
     const event = buildSendPulseEvent({ cfg, vars, telegram_id, req });
     const metaResp = await sendToMeta(event, slotNumber);
+    
     saveLeadContext({
       lead_id: vars.lead_id || event.custom_data?.lead_id, afp: vars.lead_id || event.custom_data?.lead_id,
       fbp: cleanStr(vars.fbp), fbc: cleanStr(vars.fbc), fbclid: cleanStr(vars.fbclid),
       utm_source: cleanStr(vars.utm_source), client_ip_address: getClientIp(req), client_user_agent: getUserAgent(req)
     });
+
+    // 👇 AQUI ESTÁ O QUE FALTAVA (PASSO 2) 👇
+    // Salva no banco para aparecer no relatório diário
+    await prisma.eventLog.create({ 
+      data: { type: event.event_name, provider: "sendpulse" } 
+    });
+    // 👆 FIM DA ADIÇÃO 👆
+
     res.json({ ok: true, meta: metaResp });
   } catch (err) { res.status(500).json({ ok: false }); }
 });
@@ -336,6 +391,14 @@ app.post("/novibet/deposito", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get("/relatorio", async (req, res) => {
+  try {
+    const stats = await relatorioGeral();
+    res.json({ ok: true, stats });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 const port = process.env.PORT || 10000;
 app.listen(port, () => {
   console.log(`🚀 v2.0.0 listening on port ${port}`);
