@@ -331,29 +331,154 @@ function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
 // =========================
 app.post("/sp/event", async (req, res) => {
   try {
-    const eventKey = safeString(req.query.e || req.query.event).toLowerCase();
+    const eventKey = safeString(req.query.e || req.query.event).toLowerCase().trim(); // Corrigido e com .trim()
     const slotNumber = parseInt(req.query.slot) || EVENT_SLOT_MAP[eventKey] || null;
+    
+    const cfg = EVENT_MAP[eventKey];
+    if (!cfg) {
+        // Adicionando log para eventos não mapeados para facilitar a depuração
+        console.warn(`⚠️ [ROTA /sp/event] Evento não mapeado recebido: "${eventKey}"`);
+        return res.status(400).json({ ok: false, error: "EVENT_NOT_MAPPED" });
+    }
+
     const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
-    const cfg = EVENT_MAP[eventKey] || EVENT_MAP[safeString(req.body?.[0]?.title).toLowerCase()];
-    if (!cfg) return res.status(400).json({ ok: false });
     const event = buildSendPulseEvent({ cfg, vars, telegram_id, req });
+    
+    console.log(`🚀 [ROTA /sp/event] Recebido: ${eventKey}. Enviando para Meta...`);
     const metaResp = await sendToMeta(event, slotNumber);
     
     saveLeadContext({
-      lead_id: vars.lead_id || event.custom_data?.lead_id, afp: vars.lead_id || event.custom_data?.lead_id,
-      fbp: cleanStr(vars.fbp), fbc: cleanStr(vars.fbc), fbclid: cleanStr(vars.fbclid),
-      utm_source: cleanStr(vars.utm_source), client_ip_address: getClientIp(req), client_user_agent: getUserAgent(req)
+      lead_id: vars.lead_id || event.custom_data?.lead_id, 
+      afp: vars.lead_id || event.custom_data?.lead_id,
+      fbp: cleanStr(vars.fbp), 
+      fbc: cleanStr(vars.fbc), 
+      fbclid: cleanStr(vars.fbclid),
+      utm_source: cleanStr(vars.utm_source), 
+      client_ip_address: getClientIp(req), 
+      client_user_agent: getUserAgent(req)
     });
 
-    // 👇 AQUI ESTÁ O QUE FALTAVA (PASSO 2) 👇
-    // Salva no banco para aparecer no relatório diário
     await prisma.eventLog.create({ 
       data: { type: event.event_name, provider: "sendpulse" } 
     });
-    // 👆 FIM DA ADIÇÃO 👆
 
     res.json({ ok: true, meta: metaResp });
-  } catch (err) { res.status(500).json({ ok: false }); }
+  } catch (err) { 
+      console.error(`❌ [ROTA /sp/event] Erro fatal:`, err.message);
+      res.status(500).json({ ok: false, error: err.message }); 
+  }
+});
+
+// =========================
+// ROTAS DE COMPATIBILIDADE E OUTRAS CASAS (VERSÃO CORRETA)
+// =========================
+
+// Função auxiliar para rotas antigas do SendPulse
+async function compatHandler(req, res, key) {
+  try {
+    const cfg = EVENT_MAP[key];
+    if (!cfg) {
+        console.warn(`⚠️ [ROTA DE COMPATIBILIDADE] Evento não mapeado: "${key}"`);
+        return res.status(400).json({ ok: false, error: "EVENT_NOT_MAPPED", key });
+    }
+
+    const slotNumber = EVENT_SLOT_MAP[key] || null;
+    const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
+    const event = buildSendPulseEvent({ cfg, vars, telegram_id, req });
+
+    console.log(`🚀 [ROTA DE COMPATIBILIDADE] Recebido em /sp/${key}. Enviando para Meta...`);
+    const metaResp = await sendToMeta(event, slotNumber);
+    
+    await prisma.eventLog.create({ 
+      data: { type: event.event_name, provider: "sendpulse" } 
+    });
+
+    res.json({ ok: true, event_name: event.event_name, event_id: event.event_id, slot: slotNumber, meta: metaResp });
+  } catch (err) {
+    console.error(`❌ /sp/${key} ERROR:`, err?.message || err);
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
+  }
+}
+
+// Restaurando as rotas de compatibilidade
+app.post("/sp/lead", (req, res) => compatHandler(req, res, "lead_telegram"));
+app.post("/sp/register", (req, res) => compatHandler(req, res, "registro_casa"));
+app.post("/sp/group", (req, res) => compatHandler(req, res, "grupo_telegram"));
+app.post("/sp/bilhete", (req, res) => compatHandler(req, res, "bilhete_mgm"));
+
+// =========================
+// SMARTICO -> META (GET) - SLOT1 (Vupibet)
+// =========================
+app.get("/smartico/postback", async (req, res) => {
+  try {
+    const q = req.query || {};
+    const evKey = safeString(q.ev || "").toLowerCase().trim();
+    const metaEventName = SMARTICO_EVENT_MAP[evKey];
+
+    if (!metaEventName) return res.status(400).json({ ok: false, error: "SMARTICO_EVENT_NOT_MAPPED" });
+
+    const afpKey = cleanStr(q.afp) || cleanStr(q.click_id) || cleanStr(q.afp1) || "";
+    if (!isValidUUID(afpKey)) {
+      return res.json({ ok: true, filtered: true, reason: "afp_not_uuid" });
+    }
+
+    const savedContext = await getLeadContextByAfp(afpKey);
+    const event_id = `${cleanStr(q.registration_id) || cleanStr(q.click_id) || crypto.randomUUID()}_${metaEventName}`;
+
+    const event = {
+      event_name: metaEventName,
+      event_time: Math.floor(Date.now()/1000),
+      action_source: "website",
+      event_id,
+      user_data: {
+        client_ip_address: savedContext?.client_ip_address || getClientIp(req),
+        client_user_agent: savedContext?.client_user_agent || getUserAgent(req),
+        fbp: savedContext?.fbp || cleanStr(q.fbp),
+        fbc: savedContext?.fbc || cleanStr(q.fbc),
+      },
+      custom_data: { origem: "smartico", ...q }
+    };
+
+    const metaResp = await sendToMeta(event, 1);
+    res.json({ ok: true, meta: metaResp });
+  } catch (err) {
+    console.error("❌ /smartico/postback ERROR:", err?.message || err);
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
+  }
+});
+
+// =========================
+// ESPORTIVABET
+// =========================
+app.get("/esportivabet/postback", async (req, res) => {
+  try {
+    const q = req.query;
+    const evKey = safeString(q.ev).toLowerCase().trim();
+    const slotParam = parseInt(q.slot) || 3;
+    const slotNumber = [3, 4].includes(slotParam) ? slotParam : 3;
+    const metaEventName = ESPORTIVABET_EVENT_MAP[evKey];
+
+    if (!metaEventName) return res.status(400).json({ error: "EVENT_NOT_MAPPED" });
+
+    const afpKey = cleanStr(q.afp);
+    if (!isValidUUID(afpKey)) return res.json({ ok: true, filtered: true });
+
+    const context = await getLeadContextByAfp(afpKey);
+    const event = {
+      event_name: metaEventName,
+      event_time: Math.floor(Date.now()/1000),
+      action_source: "website",
+      user_data: {
+        client_ip_address: context?.client_ip_address || getClientIp(req),
+        fbp: context?.fbp || cleanStr(q.fbp),
+        fbc: context?.fbc || cleanStr(q.fbc),
+      },
+      custom_data: { origem: "smartico", ...q }
+    };
+
+    const metaResp = await sendToMeta(event, slotNumber);
+    res.json({ ok: true, meta: metaResp });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // =====================================================================
