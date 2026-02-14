@@ -101,9 +101,10 @@ async function relatorioGeral() {
       return { hoje: dataFormatada, totais: [] };
     }
 
-    const totais = stats.map(s => ({
+     const totais = stats.map(s => ({
       provider: s.provider,
       evento: s.type,
+      subOrigem: s.extra || "", // Capturamos o s1 aqui
       contagem: s._count.type
     }));
 
@@ -565,7 +566,7 @@ app.post("/novibet/registro", async (req, res) => {
       custom_data: { origem: "novibet", player_id: playerId, s1: data.s1, s2: data.s2, s3: data.s3 }
     };
     await sendToMeta(event, 2);
-    await prisma.eventLog.create({ data: { type: "registro", provider: "novibet" } });
+    await prisma.eventLog.create({ data: { type: "registro", provider: "novibet", extra: cleanStr(data.s1) || "direto" } });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -607,7 +608,7 @@ app.post("/novibet/deposito", async (req, res) => {
       custom_data: { origem: "novibet", value, s1: data.s1, s2: data.s2, s3: data.s3 }
     };
     await sendToMeta(event, 2);
-    await prisma.eventLog.create({ data: { type: isFtd ? "ftd" : "deposito", provider: "novibet" } });
+    await prisma.eventLog.create({ data: { type: isFtd ? "ftd" : "deposito", provider: "novibet", extra: cleanStr(data.s1) || "direto" } });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -623,10 +624,11 @@ app.get("/dashboard", async (req, res) => {
     }
 
     // Monta as linhas da tabela HTML
-    const linhasTabela = totais.map(item => `
+       const linhasTabela = totais.map(item => `
       <tr>
         <td>${item.provider === 'sendpulse' ? '📱' : '🎰'} ${item.provider.toUpperCase()}</td>
-        <td>${item.evento}</td>
+        <td>${item.evento} ${item.subOrigem ? `  
+<small style="color: #3498db;"><b>Funil:</b> ${item.subOrigem}</small>` : ''}</td>
         <td>${item.contagem}</td>
       </tr>
     `).join('');
