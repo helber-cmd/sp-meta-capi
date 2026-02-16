@@ -201,9 +201,13 @@ const EVENT_MAP = {
     extra_custom_data: { origem: "whatsapp", versao: "spodd06" }
   },
    entrou_vip: { 
-    event_name: "NOVI_GOA", 
+    event_name: "novi_goa_v1", 
     extra_custom_data: { origem: "whatsapp", versao: "goa_v1" } 
-  }
+  },
+    goa_novibet: { 
+    event_name: "Lead_Novibet", 
+    extra_custom_data: { origem: "whatsapp", produto: "novibet", versao: "goa" } 
+  },
 };
 
 const SMARTICO_EVENT_MAP = { registro: "Registro_vupibet", ftd: "ftd_vupibet", qftd: "qftd_vupibet", deposito: "deposito_vupibet" };
