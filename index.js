@@ -257,8 +257,6 @@ async function getLeadContextSmart(key) {
     // Se der erro no banco, retorna nulo para não travar o sistema
     console.error(`⚠️ Erro ao buscar chave "${key}":`, e.message);
     return null;
-  }
-}
 }
 
 async function sendToPixel(event, pixelId, accessToken) {
