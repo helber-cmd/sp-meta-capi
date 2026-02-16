@@ -237,18 +237,28 @@ function getClientIp(req) {
 }
 function getUserAgent(req) { return safeString(req.headers["user-agent"] || ""); }
 
-async function getLeadContextSmart(afp, playerId) {
+async function getLeadContextSmart(key) {
   try {
-    if (afp && afp.length > 5) {
-       const context = await prisma.leadContext.findUnique({ where: { lead_id: afp } });
-       if (context) return context;
-    }
-    return null;
+    if (!key) return null;
+    
+    // Remove espaços e garante que é texto limpo
+    const cleanKey = String(key).trim();
+    
+    // Se estiver vazio ou for muito curto (lixo), ignora
+    if (cleanKey === "" || cleanKey.length < 2) return null;
+
+    // Vai no banco e busca pelo lead_id
+    const context = await prisma.leadContext.findUnique({ 
+      where: { lead_id: cleanKey } 
+    });
+    
+    return context;
   } catch (e) {
-    // AGORA ELE AVISA DO ERRO!
-    console.error(`❌ [getLeadContextSmart] Erro CRÍTICO ao buscar contexto para afp ${afp} / playerId ${playerId}:`, e.message);
-    return null; 
+    // Se der erro no banco, retorna nulo para não travar o sistema
+    console.error(`⚠️ Erro ao buscar chave "${key}":`, e.message);
+    return null;
   }
+}
 }
 
 async function sendToPixel(event, pixelId, accessToken) {
@@ -551,21 +561,50 @@ app.post("/novibet/registro", async (req, res) => {
     console.log(`✅ [FILTRO NOVIBET] Registro APROVADO! Processando...`);
     console.log("---------------------------------------------------------\n");
 
-    const afpKey = cleanStr(data.s1) || cleanStr(data.s2) || cleanStr(data.tracking_tag) || "";
-    const playerId = cleanStr(data.player_id) || cleanStr(data.registration_id);
-    const context = await getLeadContextSmart(afpKey, playerId);
+   // === 1. BUSCA INTELIGENTE EM CASCATA (NOVA LÓGICA) ===
+    // O sistema vai testar s2, s1, tracking_tag e s3 até achar o match no banco
+    let context = null;
+    const tentativas = [
+       { key: cleanStr(data.s2), fonte: "s2" },           // Prioridade 1: ID no s2
+       { key: cleanStr(data.s1), fonte: "s1" },           // Prioridade 2: ID no s1
+       { key: cleanStr(data.tracking_tag), fonte: "tag" }, // Prioridade 3: Tracking Tag
+       { key: cleanStr(data.s3), fonte: "s3" }
+    ];
 
+    for (const t of tentativas) {
+       // Pula chaves vazias ou palavras proibidas
+       if (!t.key || t.key.length < 2 || t.key.includes("pilhado") || t.key.includes("api")) continue;
+
+       const result = await getLeadContextSmart(t.key);
+       if (result && result.fbp) {
+           context = result;
+           console.log(`✅ [MATCH] Ouro recuperado via ${t.fonte} (${t.key})! FBP: ${result.fbp}`);
+           break; // Achou! Para de procurar.
+       }
+    }
+
+    const playerId = cleanStr(data.player_id) || cleanStr(data.registration_id);
+    const identificador = context?.lead_id || playerId || "anonimo";
+
+    // === 2. CRIAÇÃO DO EVENTO COM OS DADOS RECUPERADOS ===
     const event = {
       event_name: "Registro_novibet", 
       event_time: Math.floor(Date.now()/1000), action_source: "website",
-      event_id: `${playerId || afpKey}_Registro_novibet`,
+      event_id: `${identificador}_Registro_novibet`,
       user_data: {
+        // Se achou no banco (context), usa o IP/UA salvo. Senão, usa da requisição atual.
         client_ip_address: context?.client_ip_address || getClientIp(req),
         client_user_agent: context?.client_user_agent || getUserAgent(req),
-        fbp: context?.fbp || cleanStr(data.fbp), fbc: context?.fbc || cleanStr(data.fbc)
+        fbp: context?.fbp || cleanStr(data.fbp), 
+        fbc: context?.fbc || cleanStr(data.fbc),
+        // Se tiver salvo email/telefone no banco, adiciona aqui (Advanced Matching)
+        em: context?.em ? [context.em] : undefined,
+        ph: context?.ph ? [context.ph] : undefined
       },
       custom_data: { origem: "novibet", player_id: playerId, s1: data.s1, s2: data.s2, s3: data.s3 }
     };
+    
+    // === 3. ENVIO E FINALIZAÇÃO (MANTIDO) ===
     await sendToMeta(event, 2);
     await prisma.eventLog.create({ data: { type: "registro", provider: "novibet", extra: cleanStr(data.s1) || "direto" } });
     res.json({ ok: true });
@@ -591,25 +630,52 @@ app.post("/novibet/deposito", async (req, res) => {
     }
     console.log(`✅ [FILTRO NOVIBET] Depósito APROVADO! Processando...`);
     console.log("---------------------------------------------------------\n");
-    const afpKey = cleanStr(data.s1) || cleanStr(data.s2) || cleanStr(data.s3) || cleanStr(data.tracking_tag) || "";
-    const playerId = cleanStr(data.player_id) || cleanStr(data.registration_id);
-    const context = await getLeadContextSmart(afpKey, playerId);
+    // === 1. BUSCA INTELIGENTE EM CASCATA (MATCH) ===
+    let context = null;
+    const tentativas = [
+       { key: cleanStr(data.s2), fonte: "s2" },           // Prioridade 1: ID no s2
+       { key: cleanStr(data.s1), fonte: "s1" },           // Prioridade 2: ID no s1
+       { key: cleanStr(data.tracking_tag), fonte: "tag" }, // Prioridade 3: Tracking Tag
+       { key: cleanStr(data.s3), fonte: "s3" }
+    ];
 
+    for (const t of tentativas) {
+       // Pula chaves vazias ou palavras proibidas
+       if (!t.key || t.key.length < 2 || t.key.includes("pilhado") || t.key.includes("api")) continue;
+
+       const result = await getLeadContextSmart(t.key);
+       if (result && result.fbp) {
+           context = result;
+           console.log(`✅ [MATCH] Ouro recuperado via ${t.fonte} (${t.key})! FBP: ${result.fbp}`);
+           break; // Achou! Para de procurar.
+       }
+    }
+
+    const playerId = cleanStr(data.player_id) || cleanStr(data.registration_id);
+    const identificador = context?.lead_id || playerId || "anonimo";
+
+    // === 2. LÓGICA ESPECÍFICA DE DEPÓSITO (FTD e VALOR) ===
     const isFtd = data.is_ftd === "true" || data.is_ftd === true || data.status === "ftd" || data.ev === "ftd";
     const metaEventName = isFtd ? "ftd_novibet" : "deposito_novibet";
     const value = parseValue(data.value) ?? parseValue(data.amount) ?? parseValue(data.deposit_amount);
 
+    // === 3. CRIAÇÃO DO EVENTO ===
     const event = {
       event_name: metaEventName, 
       event_time: Math.floor(Date.now()/1000), action_source: "website",
-      event_id: `${playerId || afpKey}_${metaEventName}_${Math.floor(Date.now()/1000)}`,
+      event_id: `${identificador}_${metaEventName}_${Math.floor(Date.now()/1000)}`,
       user_data: {
         client_ip_address: context?.client_ip_address || getClientIp(req),
         client_user_agent: context?.client_user_agent || getUserAgent(req),
-        fbp: context?.fbp || cleanStr(data.fbp), fbc: context?.fbc || cleanStr(data.fbc)
+        fbp: context?.fbp || cleanStr(data.fbp), 
+        fbc: context?.fbc || cleanStr(data.fbc),
+        em: context?.em ? [context.em] : undefined,
+        ph: context?.ph ? [context.ph] : undefined
       },
       custom_data: { origem: "novibet", value, s1: data.s1, s2: data.s2, s3: data.s3 }
     };
+    
+    // === 4. ENVIO E FINALIZAÇÃO ===
     await sendToMeta(event, 2);
     await prisma.eventLog.create({ data: { type: isFtd ? "ftd" : "deposito", provider: "novibet", extra: cleanStr(data.s1) || "direto" } });
     res.json({ ok: true });
