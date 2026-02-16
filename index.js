@@ -542,11 +542,12 @@ app.post("/novibet/registro", async (req, res) => {
     const data = { ...req.query, ...req.body };
     console.log("📦 DADOS BRUTOS RECEBIDOS (REGISTRO):", JSON.stringify(data, null, 2));
 
-    // ✅ FILTRO DE QUALIDADE: Apenas eventos com s3="pilhado" são processados.
-   // O .trim() remove espaços vazios acidentais e o .includes garante que se a palavra estiver lá, ele aceita
-if (!String(data.s3).trim().includes("pilhado")) {
-      console.log(`🚫 [FILTRO NOVIBET] Registro ignorado. s3: "${data.s3}". Esperado: "pilhado".`);
-      return res.json({ ok: true, filtered: true, reason: "s3_mismatch" });
+           // ✅ FILTRO DE QUALIDADE: Procura "pilhado" em qualquer um dos campos (s1, s2 ou s3)
+    const buscaPilhado = `${data.s1 || ''}${data.s2 || ''}${data.s3 || ''}`;
+    if (!buscaPilhado.toLowerCase().includes("pilhado")) {
+      console.log(`🚫 [FILTRO NOVIBET] Registro ignorado. Identificador "pilhado" não encontrado.`);
+      console.log(`📦 DADOS: s1:${data.s1} | s2:${data.s2} | s3:${data.s3}`);
+      return res.json({ ok: true, filtered: true, reason: "identifier_not_found" });
     }
     console.log(`✅ [FILTRO NOVIBET] Registro APROVADO! Processando...`);
     console.log("---------------------------------------------------------\n");
@@ -582,11 +583,12 @@ app.post("/novibet/deposito", async (req, res) => {
     const data = { ...req.query, ...req.body };
     console.log("📦 DADOS BRUTOS RECEBIDOS (DEPÓSITO):", JSON.stringify(data, null, 2));
 
-    // ✅ FILTRO DE QUALIDADE: Apenas eventos com s3="pilhado" são processados.
-    // O .trim() remove espaços vazios acidentais e o .includes garante que se a palavra estiver lá, ele aceita
-if (!String(data.s3).trim().includes("pilhado")) {
-      console.log(`🚫 [FILTRO NOVIBET] Depósito ignorado. s3: "${data.s3}". Esperado: "pilhado".`);
-      return res.json({ ok: true, filtered: true, reason: "s3_mismatch" });
+        // ✅ FILTRO DE QUALIDADE: Procura "pilhado" em qualquer um dos campos (s1, s2 ou s3)
+    const buscaPilhado = `${data.s1 || ''}${data.s2 || ''}${data.s3 || ''}`;
+    if (!buscaPilhado.toLowerCase().includes("pilhado")) {
+      console.log(`🚫 [FILTRO NOVIBET] Registro ignorado. Identificador "pilhado" não encontrado.`);
+      console.log(`📦 DADOS: s1:${data.s1} | s2:${data.s2} | s3:${data.s3}`);
+      return res.json({ ok: true, filtered: true, reason: "identifier_not_found" });
     }
     console.log(`✅ [FILTRO NOVIBET] Depósito APROVADO! Processando...`);
     console.log("---------------------------------------------------------\n");
