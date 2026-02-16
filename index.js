@@ -78,15 +78,16 @@ const prisma = new PrismaClient();
 const app = express();
 
 // =========================
-// RELATÓRIO GERAL (VERSÃO CORRIGIDA PARA O DASHBOARD)
+// RELATÓRIO GERAL (AGORA SEPARADO POR S1/FUNIL)
 // =========================
 async function relatorioGeral() {
   try {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
+    // 👇 A MÁGICA: Adicionei 'extra' no agrupamento
     const stats = await prisma.eventLog.groupBy({
-      by: ['type', 'provider'],
+      by: ['type', 'provider', 'extra'], 
       where: { createdAt: { gte: hoje } },
       _count: { type: true },
       orderBy: [{ provider: 'asc' }, { type: 'asc' }]
@@ -95,29 +96,29 @@ async function relatorioGeral() {
     const dataFormatada = hoje.toLocaleDateString('pt-BR');
     console.log(`\n📊 === RESUMO DO DIA (${dataFormatada}) ===`);
 
-    // ✅ SEMPRE retorna um objeto com 'totais' sendo um array
     if (!stats || stats.length === 0) {
       console.log("Nenhum evento registrado hoje ainda.");
       return { hoje: dataFormatada, totais: [] };
     }
 
-     const totais = stats.map(s => ({
+    const totais = stats.map(s => ({
       provider: s.provider,
       evento: s.type,
-      subOrigem: s.extra || "", // Capturamos o s1 aqui
+      subOrigem: s.extra || "direto", // Aqui mostramos o s1
       contagem: s._count.type
     }));
 
-    // Logs no console
+    // Logs no console (Formatado para fácil leitura)
     const sp = totais.filter(s => s.provider === 'sendpulse');
     const novi = totais.filter(s => s.provider === 'novibet');
+    
     if (sp.length > 0) {
       console.log("📱 [SENDPULSE]");
-      sp.forEach(s => console.log(`   - ${s.evento.padEnd(25)}: ${s.contagem}`));
+      sp.forEach(s => console.log(`   - ${s.evento.padEnd(20)} [${s.subOrigem}]: ${s.contagem}`));
     }
     if (novi.length > 0) {
       console.log("🎰 [NOVIBET]");
-      novi.forEach(s => console.log(`   - ${s.evento.padEnd(25)}: ${s.contagem}`));
+      novi.forEach(s => console.log(`   - ${s.evento.padEnd(20)} [${s.subOrigem}]: ${s.contagem}`));
     }
     console.log("=================================================\n");
 
