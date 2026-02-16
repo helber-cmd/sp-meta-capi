@@ -543,7 +543,8 @@ app.post("/novibet/registro", async (req, res) => {
     console.log("📦 DADOS BRUTOS RECEBIDOS (REGISTRO):", JSON.stringify(data, null, 2));
 
     // ✅ FILTRO DE QUALIDADE: Apenas eventos com s3="pilhado" são processados.
-    if (data.s3 !== "pilhado") {
+   // O .trim() remove espaços vazios acidentais e o .includes garante que se a palavra estiver lá, ele aceita
+if (!String(data.s3).trim().includes("pilhado")) {
       console.log(`🚫 [FILTRO NOVIBET] Registro ignorado. s3: "${data.s3}". Esperado: "pilhado".`);
       return res.json({ ok: true, filtered: true, reason: "s3_mismatch" });
     }
@@ -582,7 +583,8 @@ app.post("/novibet/deposito", async (req, res) => {
     console.log("📦 DADOS BRUTOS RECEBIDOS (DEPÓSITO):", JSON.stringify(data, null, 2));
 
     // ✅ FILTRO DE QUALIDADE: Apenas eventos com s3="pilhado" são processados.
-    if (data.s3 !== "pilhado") {
+    // O .trim() remove espaços vazios acidentais e o .includes garante que se a palavra estiver lá, ele aceita
+if (!String(data.s3).trim().includes("pilhado")) {
       console.log(`🚫 [FILTRO NOVIBET] Depósito ignorado. s3: "${data.s3}". Esperado: "pilhado".`);
       return res.json({ ok: true, filtered: true, reason: "s3_mismatch" });
     }
