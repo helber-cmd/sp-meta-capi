@@ -176,6 +176,12 @@ const EVENT_MAP = {
   lead_whatsapp: { event_name: "Lead_Whatsapp", extra_custom_data: { origem: "whatsapp" } },
   lead_comunidadewpp: { event_name: "Lead_ComunidadeWPP", extra_custom_data: { origem: "whatsapp", etapa: "comunidade" } },
 
+  // ✅ ADICIONADO: GOA NOVIBET
+  goa_novibet: { 
+    event_name: "Lead_Novibet", 
+    extra_custom_data: { origem: "whatsapp", produto: "novibet", versao: "goa" } 
+  },
+
   // --- NOVOS EVENTOS (SUPERBET & MGM) ---
   superbet_goa_v1: {
     event_name: "SuperBet_GOA_V1",
@@ -195,20 +201,9 @@ const EVENT_MAP = {
   bilhete_superbet: {
     event_name: "Bilhete_Superbet",
     extra_custom_data: { origem: "whatsapp", produto: "bilhete_superbet" }
-  },
-   lead_novi_spodd06: {
-    event_name: "lead_novi_spodd06",
-    extra_custom_data: { origem: "whatsapp", versao: "spodd06" }
-  },
-   entrou_vip: { 
-    event_name: "novi_goa_v1", 
-    extra_custom_data: { origem: "whatsapp", versao: "goa_v1" } 
-  },
-    goa_novibet: { 
-    event_name: "Lead_Novibet", 
-    extra_custom_data: { origem: "whatsapp", produto: "novibet", versao: "goa" } 
-  },
+  }
 };
+
 
 const SMARTICO_EVENT_MAP = { registro: "Registro_vupibet", ftd: "ftd_vupibet", qftd: "qftd_vupibet", deposito: "deposito_vupibet" };
 const NOVIBET_EVENT_MAP = { registro: "Registro_novibet", deposito: "deposito_novibet", ftd: "ftd_novibet" };
