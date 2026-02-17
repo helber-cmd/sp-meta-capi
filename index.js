@@ -78,16 +78,16 @@ const prisma = new PrismaClient();
 const app = express();
 
 // =========================
-// RELATÓRIO GERAL (AGORA SEPARADO POR S1/FUNIL)
+// RELATÓRIO GERAL (CORRIGIDO E SEGURO)
 // =========================
 async function relatorioGeral() {
   try {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
-    // 👇 A MÁGICA: Adicionei 'extra' no agrupamento
+    // 👇 VOLTAMOS AO BÁSICO SEGURO
     const stats = await prisma.eventLog.groupBy({
-      by: ['type', 'provider', 'extra'], 
+      by: ['type', 'provider'], 
       where: { createdAt: { gte: hoje } },
       _count: { type: true },
       orderBy: [{ provider: 'asc' }, { type: 'asc' }]
@@ -103,22 +103,22 @@ async function relatorioGeral() {
 
     const totais = stats.map(s => ({
       provider: s.provider,
-      evento: s.type,
-      subOrigem: s.extra || "direto", // Aqui mostramos o s1
+      evento: s.type, 
+      subOrigem: "", // O detalhe agora virá dentro do nome do evento
       contagem: s._count.type
     }));
 
-    // Logs no console (Formatado para fácil leitura)
+    // Logs no console
     const sp = totais.filter(s => s.provider === 'sendpulse');
     const novi = totais.filter(s => s.provider === 'novibet');
     
     if (sp.length > 0) {
       console.log("📱 [SENDPULSE]");
-      sp.forEach(s => console.log(`   - ${s.evento.padEnd(20)} [${s.subOrigem}]: ${s.contagem}`));
+      sp.forEach(s => console.log(`   - ${s.evento.padEnd(30)}: ${s.contagem}`));
     }
     if (novi.length > 0) {
       console.log("🎰 [NOVIBET]");
-      novi.forEach(s => console.log(`   - ${s.evento.padEnd(20)} [${s.subOrigem}]: ${s.contagem}`));
+      novi.forEach(s => console.log(`   - ${s.evento.padEnd(30)}: ${s.contagem}`));
     }
     console.log("=================================================\n");
 
@@ -674,9 +674,15 @@ app.post("/novibet/deposito", async (req, res) => {
       custom_data: { origem: "novibet", value, s1: data.s1, s2: data.s2, s3: data.s3 }
     };
     
-    // === 4. ENVIO E FINALIZAÇÃO ===
+ // === 3. ENVIO E FINALIZAÇÃO ===
     await sendToMeta(event, 2);
-    await prisma.eventLog.create({ data: { type: isFtd ? "ftd" : "deposito", provider: "novibet", extra: cleanStr(data.s1) || "direto" } });
+    
+    // 👇 O TRUQUE: Salvamos o s1 DENTRO do Tipo
+    const origemLog = cleanStr(data.s1) || "direto";
+    await prisma.eventLog.create({ 
+        data: { type: `Registro (${origemLog})`, provider: "novibet" } 
+    });
+    
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
