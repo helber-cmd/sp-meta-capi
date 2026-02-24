@@ -708,6 +708,111 @@ app.post("/novibet/deposito", async (req, res) => {
     res.status(500).json({ error: e.message }); 
   }
 });
+// =====================================================================
+// SUPERBET (DEPÓSITO E FTD) - SLOT 5
+// =====================================================================
+
+// ROTA PARA DEPÓSITO (Geral)
+app.post("/superbet/deposito", async (req, res) => {
+  try {
+    console.log("\n---------------------------------------------------------");
+    console.log("💰 [SUPERBET] Novo DEPÓSITO recebido.");
+    const data = { ...req.query, ...req.body };
+    console.log("📦 DADOS BRUTOS (SUPERBET DEP):", JSON.stringify(data, null, 2));
+
+    // Busca o lead_id no s2 ou s1 (mesma lógica da Novibet)
+    const leadId = cleanStr(data.s2) || cleanStr(data.s1);
+    const context = await getLeadContextSmart(leadId);
+
+    const value = parseValue(data.value) || parseValue(data.amount);
+    const event_id = `dep_superbet_${cleanStr(data.player_id) || leadId}_${Date.now()}`;
+
+    const event = {
+      event_name: "deposito_superbet", // Evento customizado para depósitos recorrentes
+      event_time: Math.floor(Date.now()/1000),
+      action_source: "website",
+      event_id: event_id,
+      user_data: {
+        client_ip_address: context?.client_ip_address || getClientIp(req),
+        client_user_agent: context?.client_user_agent || getUserAgent(req),
+        fbp: context?.fbp,
+        fbc: context?.fbc,
+        external_id: [sha256(leadId)]
+      },
+      custom_data: { 
+        origem: "superbet", 
+        value: value, 
+        currency: "BRL", 
+        lead_id: leadId,
+        s1: data.s1,
+        s2: data.s2
+      }
+    };
+
+    console.log(`🚀 [META] Enviando 'deposito_superbet' para o Facebook (Slot 5)...`);
+    await sendToMeta(event, 5); // Enviando para o SLOT 5 (MGM/Superbet)
+
+    await prisma.eventLog.create({ 
+      data: { type: "deposito", provider: "superbet", extra: cleanStr(data.s1) || "direto" } 
+    });
+
+    res.json({ ok: true });
+  } catch (e) { 
+    console.error("❌ [ERRO SUPERBET DEPÓSITO]:", e.message);
+    res.status(500).json({ error: e.message }); 
+  }
+});
+
+// ROTA PARA FTD (Primeiro Depósito)
+app.post("/superbet/ftd", async (req, res) => {
+  try {
+    console.log("\n---------------------------------------------------------");
+    console.log("💎 [SUPERBET] Novo FTD (Primeiro Depósito) recebido.");
+    const data = { ...req.query, ...req.body };
+    console.log("📦 DADOS BRUTOS (SUPERBET FTD):", JSON.stringify(data, null, 2));
+
+    const leadId = cleanStr(data.s2) || cleanStr(data.s1);
+    const context = await getLeadContextSmart(leadId);
+
+    const value = parseValue(data.value) || parseValue(data.amount);
+    const event_id = `ftd_superbet_${cleanStr(data.player_id) || leadId}_${Date.now()}`;
+
+    const event = {
+      event_name: "Purchase", // FTD sempre enviamos como 'Purchase' para o Meta otimizar melhor
+      event_time: Math.floor(Date.now()/1000),
+      action_source: "website",
+      event_id: event_id,
+      user_data: {
+        client_ip_address: context?.client_ip_address || getClientIp(req),
+        client_user_agent: context?.client_user_agent || getUserAgent(req),
+        fbp: context?.fbp,
+        fbc: context?.fbc,
+        external_id: [sha256(leadId)]
+      },
+      custom_data: { 
+        origem: "superbet", 
+        value: value, 
+        currency: "BRL", 
+        lead_id: leadId,
+        s1: data.s1,
+        s2: data.s2
+      }
+    };
+
+    console.log(`🚀 [META] Enviando 'Purchase' (FTD) para o Facebook (Slot 5)...`);
+    await sendToMeta(event, 5); // SLOT 5
+
+    await prisma.eventLog.create({ 
+      data: { type: "ftd", provider: "superbet", extra: cleanStr(data.s1) || "direto" } 
+    });
+
+    res.json({ ok: true });
+  } catch (e) { 
+    console.error("❌ [ERRO SUPERBET FTD]:", e.message);
+    res.status(500).json({ error: e.message }); 
+  }
+});
+
 
 // =========================
 // DASHBOARD DE MÉTRICAS DO DIA
