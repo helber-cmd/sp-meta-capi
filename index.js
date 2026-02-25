@@ -744,60 +744,86 @@ app.post("/novibet/deposito", async (req, res) => {
   }
 });
 // =====================================================================
-// SUPERBET (DEPÓSITO E FTD) - SLOT 5
+// ROTA SUPERBET (INCOME ACCESS) - PADRÃO FINAL [ACID] & [ET]
 // =====================================================================
-
-// ROTA PARA DEPÓSITO (Geral)
-app.post("/superbet/deposito", async (req, res) => {
+app.get("/superbet", async (req, res) => {
   try {
-    console.log("\n---------------------------------------------------------");
-    console.log("💰 [SUPERBET] Novo DEPÓSITO recebido.");
-    const data = { ...req.query, ...req.body };
-    console.log("📦 DADOS BRUTOS (SUPERBET DEP):", JSON.stringify(data, null, 2));
+    const q = req.query;
+    console.log("💰 [SUPERBET] Postback recebido:", JSON.stringify(q));
 
-    // Busca o lead_id no s2 ou s1 (mesma lógica da Novibet)
-    const leadId = cleanStr(data.s2) || cleanStr(data.s1);
-    const context = await getLeadContextSmart(leadId);
+    // 1. Identifica o Evento pelo parâmetro 'et' (reg ou ftd)
+    const etType = safeString(q.et).toLowerCase().trim();
+    
+    let metaEventName = "Registration"; // Padrão se for 'reg'
+    let isFtd = false;
 
-    const value = parseValue(data.value) || parseValue(data.amount);
-    const event_id = `dep_superbet_${cleanStr(data.player_id) || leadId}_${Date.now()}`;
+    // Se o gerente mandar 'ftd', viramos a chave para Compra
+    if (etType === "ftd" || etType.includes("dep")) {
+        metaEventName = "Purchase"; 
+        isFtd = true;
+    }
+
+    // 2. O Cruzamento: Pegamos o ID no parâmetro 'cid' (que é o [acid])
+    const leadId = cleanStr(q.cid) || cleanStr(q.uid); // Mantive uid de backup
+    
+    // Validação de Segurança
+    if (!isValidUUID(leadId)) {
+        console.log(`🚫 [SUPERBET] Lead ID inválido ou ausente (cid): ${leadId}`);
+        return res.json({ ok: true, filtered: true, reason: "invalid_uuid" });
+    }
+
+    // Busca no Banco (Recupera FBP, FBC do SendPulse)
+    const context = await getLeadContextByAfp(leadId); 
+
+    if (context) {
+        console.log(`✅ [SUPERBET] Match confirmado para ${leadId}`);
+    } else {
+        console.warn(`⚠️ [SUPERBET] Sem Match no banco para ${leadId}`);
+    }
+
+    // 3. Monta o Evento pro Facebook
+    // Se for FTD e não vier valor, assume R$ 30 (padrão de mercado)
+    const value = parseValue(q.val) || parseValue(q.amount) || (isFtd ? 30 : 0);
+    const currency = cleanStr(q.cur) || cleanStr(q.currency) || "BRL";
+    
+    const event_id = `superbet_${leadId}_${metaEventName}_${Math.floor(Date.now()/1000)}`;
 
     const event = {
-      event_name: "deposito_superbet", // Evento customizado para depósitos recorrentes
-      event_time: Math.floor(Date.now()/1000),
+      event_name: metaEventName,
+      event_time: Math.floor(Date.now() / 1000),
       action_source: "website",
       event_id: event_id,
       user_data: {
         client_ip_address: context?.client_ip_address || getClientIp(req),
         client_user_agent: context?.client_user_agent || getUserAgent(req),
-        fbp: context?.fbp,
-        fbc: context?.fbc,
+        fbp: context?.fbp || undefined,
+        fbc: context?.fbc || undefined,
         external_id: [sha256(leadId)]
       },
-      custom_data: { 
-        origem: "superbet", 
-        value: value, 
-        currency: "BRL", 
+      custom_data: {
+        origem: "superbet",
+        currency: currency,
+        value: value,
         lead_id: leadId,
-        s1: data.s1,
-        s2: data.s2
+        income_event: etType // Guarda o que veio no 'et' para debug
       }
     };
 
-    console.log(`🚀 [META] Enviando 'deposito_superbet' para o Facebook (Slot 5)...`);
-    await sendToMeta(event, 5); // Enviando para o SLOT 5 (MGM/Superbet)
+    // 4. Envia para o Facebook (Slot 1 - Ajuste se tiver slot exclusivo)
+    await sendToMeta(event, 1); 
 
+    // 5. Log Dashboard (Sem usar coluna 'extra')
     await prisma.eventLog.create({ 
-      data: { type: "deposito", provider: "superbet", extra: cleanStr(data.s1) || "direto" } 
-    });
+        data: { type: `${metaEventName} (Superbet)`, provider: "superbet" } 
+    }).catch(e=>{});
 
     res.json({ ok: true });
-  } catch (e) { 
-    console.error("❌ [ERRO SUPERBET DEPÓSITO]:", e.message);
-    res.status(500).json({ error: e.message }); 
+
+  } catch (err) {
+    console.error("❌ [ERRO SUPERBET]:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
-
 // ROTA PARA FTD (Primeiro Depósito)
 app.post("/superbet/ftd", async (req, res) => {
   try {
