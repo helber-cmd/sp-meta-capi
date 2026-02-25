@@ -66,7 +66,7 @@
 // META_PIXEL_SLOT2 / META_TOKEN_SLOT2    -> Novibet
 // META_PIXEL_SLOT3 / META_TOKEN_SLOT3    -> Esportivabet Pixel 1
 // META_PIXEL_SLOT4 / META_TOKEN_SLOT4    -> Esportivabet Pixel 2
-// META_PIXEL_SLOT5 / META_TOKEN_SLOT5    -> MGM (stand-by)
+// META_PIXEL_SLOT5 / META_TOKEN_SLOT5    -> SuperBet Isolado
 // =====================================================================
 
 import express from "express";
@@ -809,8 +809,8 @@ app.get("/superbet", async (req, res) => {
       }
     };
 
-    // 4. Envia para o Facebook (Slot 1 - Ajuste se tiver slot exclusivo)
-    await sendToMeta(event, 1); 
+    // 4. Envia para o Facebook (Slot 5 - Ajuste se tiver slot exclusivo)
+    await sendToMeta(event, 5); 
 
     // 5. Log Dashboard (Sem usar coluna 'extra')
     await prisma.eventLog.create({ 
