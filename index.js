@@ -144,7 +144,27 @@ async function relatorioGeral() {
     return "Erro ao gerar o resumo diário.";
   }
 }
+async function buscarDadosDashboard() {
+  const agora = new Date();
+  const hojeInicio = new Date(agora);
+  hojeInicio.setHours(0, 0, 0, 0);
 
+  const stats = await prisma.eventLog.groupBy({
+    by: ['provider', 'type', 'extra'],
+    where: { createdAt: { gte: hojeInicio } },
+    _count: { type: true },
+    orderBy: [{ provider: 'asc' }, { type: 'asc' }]
+  });
+
+  const totais = stats.map(s => ({
+    provider: s.provider,
+    evento: s.type,
+    subOrigem: s.extra || null,
+    contagem: s._count.type
+  }));
+
+  return { hoje: agora.toLocaleDateString('pt-BR'), totais };
+}
 
 
 // Roda o relatório sozinho a cada 1 hora (para não sujar o log)
@@ -834,7 +854,7 @@ app.post("/superbet/ftd", async (req, res) => {
 // =========================
 app.get("/dashboard", async (req, res) => {
   try {
-    const { hoje, totais, error } = await relatorioGeral();
+    const { hoje, totais } = await buscarDadosDashboard();
 
     if (error) {
       return res.status(500).send(`<h1>Erro ao gerar dashboard</h1><p>${error}</p>`);
@@ -902,7 +922,7 @@ app.get("/dashboard", async (req, res) => {
 
 app.get("/relatorio", async (req, res) => {
   try {
-    const { totais } = await relatorioGeral();
+    const { totais } = await buscarDadosDashboard();
     res.json({ ok: true, stats: totais });
   } catch (e) {
     res.status(500).json({ error: e.message });
