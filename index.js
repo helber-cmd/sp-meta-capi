@@ -754,12 +754,12 @@ app.get("/superbet", async (req, res) => {
     // 1. Identifica o Evento pelo parâmetro 'et' (reg ou ftd)
     const etType = safeString(q.et).toLowerCase().trim();
     
-    let metaEventName = "Registration"; // Padrão se for 'reg'
+    let metaEventName = "registro_superbet"; // Padrão se for 'reg'
     let isFtd = false;
 
     // Se o gerente mandar 'ftd', viramos a chave para Compra
     if (etType === "ftd" || etType.includes("dep")) {
-        metaEventName = "Purchase"; 
+        metaEventName = "ftd_superbet"; 
         isFtd = true;
     }
 
