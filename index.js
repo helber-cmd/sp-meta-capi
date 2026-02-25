@@ -78,55 +78,70 @@ const prisma = new PrismaClient();
 const app = express();
 
 // =========================
-// RELATÓRIO GERAL (CORRIGIDO E SEGURO)
+// RELATÓRIO GERAL (VERSÃO FINAL - NOVIBET S1/S2/S3)
 // =========================
 async function relatorioGeral() {
   try {
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
+    const agora = new Date();
+    const hojeInicio = new Date(agora);
+    hojeInicio.setHours(0, 0, 0, 0);
 
-    // 👇 VOLTAMOS AO BÁSICO SEGURO
-    const stats = await prisma.eventLog.groupBy({
-      by: ['type', 'provider'], 
-      where: { createdAt: { gte: hoje } },
-      _count: { type: true },
-      orderBy: [{ provider: 'asc' }, { type: 'asc' }]
-    });
-
-    const dataFormatada = hoje.toLocaleDateString('pt-BR');
-    console.log(`\n📊 === RESUMO DO DIA (${dataFormatada}) ===`);
-
-    if (!stats || stats.length === 0) {
-      console.log("Nenhum evento registrado hoje ainda.");
-      return { hoje: dataFormatada, totais: [] };
-    }
-
-    const totais = stats.map(s => ({
-      provider: s.provider,
-      evento: s.type, 
-      subOrigem: "", // O detalhe agora virá dentro do nome do evento
-      contagem: s._count.type
-    }));
-
-    // Logs no console
-    const sp = totais.filter(s => s.provider === 'sendpulse');
-    const novi = totais.filter(s => s.provider === 'novibet');
+    const ontemInicio = new Date(hojeInicio);
+    ontemInicio.setDate(ontemInicio.getDate() - 1);
     
-    if (sp.length > 0) {
-      console.log("📱 [SENDPULSE]");
-      sp.forEach(s => console.log(`   - ${s.evento.padEnd(30)}: ${s.contagem}`));
-    }
-    if (novi.length > 0) {
-      console.log("🎰 [NOVIBET]");
-      novi.forEach(s => console.log(`   - ${s.evento.padEnd(30)}: ${s.contagem}`));
-    }
-    console.log("=================================================\n");
+    const ontemFim = new Date(hojeInicio);
+    ontemFim.setMilliseconds(-1);
 
-    return { hoje: dataFormatada, totais: totais };
+    // Busca estatísticas agrupadas
+    const getStats = async (inicio, fim) => {
+      return await prisma.eventLog.groupBy({
+        by: ['provider', 'extra', 'type'],
+        where: { 
+          createdAt: { gte: inicio, lte: fim },
+          provider: 'novibet',
+          extra: { notIn: ["", "direto"] } // Filtra apenas os que têm algum S1/S2/S3 real
+        },
+        _count: { type: true },
+        orderBy: [{ extra: 'asc' }, { type: 'asc' }]
+      });
+    };
 
-  } catch (e) {
-    console.error("❌ Erro no relatório:", e.message);
-    return { hoje: new Date().toLocaleDateString('pt-BR'), totais: [], error: e.message };
+    const statsHoje = await getStats(hojeInicio, agora);
+    const statsOntem = await getStats(ontemInicio, ontemFim);
+
+    const formatarBloco = (stats, titulo) => {
+      if (stats.length === 0) return `\n*${titulo}:* Sem dados de S1/S2/S3 hoje.\n`;
+      
+      let bloco = `\n*${titulo}:*\n`;
+      let currentExtra = "";
+
+      stats.forEach(s => {
+        const extra = s.extra;
+        const type = s.type;
+        const count = s._count.type;
+
+        if (extra !== currentExtra) {
+          bloco += `\n🏠 *Campanha/S1:* \`${extra}\`\n`;
+          currentExtra = extra;
+        }
+
+        const emoji = type === "ftd" ? "💎" : type === "deposito" ? "💰" : "📝";
+        bloco += `    ${emoji} ${type}: *${count}*\n`;
+      });
+      return bloco;
+    };
+
+    let msg = `📊 *DASHBOARD NOVIBET (POR EXPERT)*\n`;
+    msg += `--------------------------------\n`;
+    msg += formatarBloco(statsHoje, "📅 RESULTADOS DE HOJE");
+    msg += `--------------------------------\n`;
+    msg += formatarBloco(statsOntem, "⏪ RESULTADOS DE ONTEM");
+    msg += `\n🔗 *Dashboard Web:* https://sp-meta-capi.onrender.com/dashboard`;
+    
+    return msg;
+  } catch (err ) {
+    console.error("❌ Erro no relatório:", err.message);
+    return "Erro ao gerar o resumo diário.";
   }
 }
 
@@ -611,7 +626,7 @@ app.post("/novibet/registro", async (req, res) => {
     await sendToMeta(event, 2); // Envia para o Slot 2 (Novibet)
 
     await prisma.eventLog.create({ 
-      data: { type: "registro", provider: "novibet", extra: cleanStr(data.s1) || "direto" } 
+      data: { type: "registro", provider: "novibet", extra: cleanStr(data.s1) || cleanStr(data.s2) || cleanStr(data.s3) || "direto"} 
     });
 
     console.log("✅ [SUCESSO] Processamento de Registro finalizado.");
@@ -696,7 +711,7 @@ app.post("/novibet/deposito", async (req, res) => {
     await sendToMeta(event, 2); // Slot 2 (Novibet)
 
     await prisma.eventLog.create({ 
-      data: { type: isFtd ? "ftd" : "deposito", provider: "novibet", extra: cleanStr(data.s1) || "direto" } 
+      data: { type: isFtd ? "ftd" : "deposito", provider: "novibet", extra: cleanStr(data.s1) || cleanStr(data.s2) || cleanStr(data.s3) || "direto"} 
     });
 
     console.log(`✅ [SUCESSO] Processamento de ${metaEventName} finalizado.`);
