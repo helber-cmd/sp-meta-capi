@@ -37,7 +37,8 @@ model LeadContext {
 // Tabela para o Placar no Log
 model EventLog {
   id        String   @id @default(uuid())
-  type      String   // "registro" ou "deposito"
-  provider  String   // "novibet"
+  type      String
+  provider  String
+  extra     String?
   createdAt DateTime @default(now())
 }
