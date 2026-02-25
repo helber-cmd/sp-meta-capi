@@ -856,10 +856,7 @@ app.get("/dashboard", async (req, res) => {
   try {
     const { hoje, totais } = await buscarDadosDashboard();
 
-    if (error) {
-      return res.status(500).send(`<h1>Erro ao gerar dashboard</h1><p>${error}</p>`);
-    }
-
+  
     // Monta as linhas da tabela HTML
        const linhasTabela = totais.map(item => `
       <tr>
