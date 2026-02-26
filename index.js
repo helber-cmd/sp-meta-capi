@@ -833,9 +833,13 @@ app.get("/superbet", async (req, res) => {
 
     // 5. Log Dashboard (Sem usar coluna 'extra')
     await prisma.eventLog.create({ 
-        data: { type: `${metaEventName} (Superbet)`, provider: "superbet" } 
-    }).catch(e=>{});
-
+    data: { 
+        type: isFtd ? "ftd" : "registro", 
+        provider: "superbet", 
+        extra: cleanStr(q.cid) || "direto"
+    } 
+}).catch(e=>{});
+    
     res.json({ ok: true });
 
   } catch (err) {
