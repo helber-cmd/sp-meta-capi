@@ -144,14 +144,27 @@ async function relatorioGeral() {
     return "Erro ao gerar o resumo diário.";
   }
 }
-async function buscarDadosDashboard() {
+async function buscarDadosDashboard(dataFiltro = null) {
+  // Usa a data passada ou hoje, sempre em UTC-3 (Brasília)
   const agora = new Date();
-  const hojeInicio = new Date(agora);
-  hojeInicio.setHours(0, 0, 0, 0);
+  const offsetBrasilia = -3 * 60; // -3h em minutos
+  const agoraBrasilia = new Date(agora.getTime() + (offsetBrasilia - agora.getTimezoneOffset()) * 60000);
+
+  let diaInicio, diaFim;
+
+  if (dataFiltro) {
+    // dataFiltro vem como "2026-02-25" (string do input date)
+    diaInicio = new Date(`${dataFiltro}T00:00:00-03:00`);
+    diaFim    = new Date(`${dataFiltro}T23:59:59-03:00`);
+  } else {
+    const hojeStr = agoraBrasilia.toISOString().split("T")[0];
+    diaInicio = new Date(`${hojeStr}T00:00:00-03:00`);
+    diaFim    = new Date(`${hojeStr}T23:59:59-03:00`);
+  }
 
   const stats = await prisma.eventLog.groupBy({
     by: ['provider', 'type', 'extra'],
-    where: { createdAt: { gte: hojeInicio } },
+    where: { createdAt: { gte: diaInicio, lte: diaFim } },
     _count: { type: true },
     orderBy: [{ provider: 'asc' }, { type: 'asc' }]
   });
@@ -163,9 +176,11 @@ async function buscarDadosDashboard() {
     contagem: s._count.type
   }));
 
-  return { hoje: agora.toLocaleDateString('pt-BR'), totais };
-}
+  const hojeStr = agoraBrasilia.toISOString().split("T")[0];
+  const dataExibida = dataFiltro || hojeStr;
 
+  return { hoje: dataExibida, totais, hojeStr };
+}
 
 // Roda o relatório sozinho a cada 1 hora (para não sujar o log)
 setInterval(relatorioGeral, 60 * 60 * 1000); 
@@ -884,8 +899,8 @@ app.post("/superbet/ftd", async (req, res) => {
 // =========================
 app.get("/dashboard", async (req, res) => {
   try {
-    const { hoje, totais } = await buscarDadosDashboard();
-
+    const dataFiltro = req.query.data || null;
+const { hoje, totais, hojeStr } = await buscarDadosDashboard(dataFiltro);
   
     // Monta as linhas da tabela HTML
        const linhasTabela = totais.map(item => `
@@ -921,6 +936,23 @@ app.get("/dashboard", async (req, res) => {
         <div class="container">
           <h1>Dashboard de Eventos</h1>
           <h2>Resumo do Dia: ${hoje}</h2>
+<div style="text-align:center; padding: 10px 0 20px;">
+  <form method="GET" action="/dashboard">
+    <input 
+      type="date" 
+      name="data" 
+      value="${hoje}"
+      max="${hojeStr}"
+      style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;"
+    />
+    <button 
+      type="submit"
+      style="padding: 8px 16px; margin-left: 8px; background: #2c3e50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;"
+    >
+      Ver dia
+    </button>
+  </form>
+</div>
           ${totais.length > 0 ? `
             <table>
               <thead>
