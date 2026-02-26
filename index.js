@@ -749,9 +749,13 @@ app.post("/novibet/deposito", async (req, res) => {
 app.get("/superbet", async (req, res) => {
   try {
     const q = req.query;
-    console.log("💰 [SUPERBET] Postback recebido:", JSON.stringify(q));
-
-    // 1. Identifica o Evento pelo parâmetro 'et' (reg ou ftd)
+    
+    // LOG VISUAL (Igual da Novibet)
+    console.log("\n---------------------------------------------------------");
+    console.log("💰 [SUPERBET] Postback recebido.");
+    console.log("📦 DADOS BRUTOS:", JSON.stringify(q, null, 2));
+    
+    // 1. Identifica Evento (reg ou ftd)
     const etType = safeString(q.et).toLowerCase().trim();
     
     let metaEventName = "registro_superbet"; // Padrão se for 'reg'
