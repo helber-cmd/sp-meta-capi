@@ -64,7 +64,7 @@
 // META_PIXEL_MASTER / META_TOKEN_MASTER  -> Recebe 100% dos eventos
 // META_PIXEL_SLOT1 / META_TOKEN_SLOT1    -> Vupibet
 // META_PIXEL_SLOT2 / META_TOKEN_SLOT2    -> Novibet
-// META_PIXEL_SLOT3 / META_TOKEN_SLOT3    -> Esportivabet Pixel 1
+// META_PIXEL_SLOT3 / META_TOKEN_SLOT3    -> Esportivabet Pixel 1 (Deles)
 // META_PIXEL_SLOT4 / META_TOKEN_SLOT4    -> Esportivabet Pixel 2
 // META_PIXEL_SLOT5 / META_TOKEN_SLOT5    -> SuperBet Isolado
 // =====================================================================
