@@ -920,6 +920,10 @@ app.post("/superbet/ftd", async (req, res) => {
 app.post("/ads/metrics", async (req, res) => {
   try {
     const items = Array.isArray(req.body) ? req.body : [req.body];
+    const extrairFunil = (campaignName) => {
+  const match = (campaignName || "").toLowerCase().match(/(f[0-9]+)/);
+  return match ? match[1] : null;
+};
     let salvos = 0;
 
     for (const item of items) {
@@ -929,6 +933,7 @@ app.post("/ads/metrics", async (req, res) => {
       await prisma.adMetrics.upsert({
         where: { uniqueId: d.UniqueID },
         update: {
+          funil: extrairFunil(d.CampaignName),
           amountSpent: d.AmountSpent || 0,
           impressions: d.Impressions || 0,
           linkClicks: d.LinkClicks || 0,
@@ -936,6 +941,7 @@ app.post("/ads/metrics", async (req, res) => {
           ctr: d.CTR || 0,
         },
         create: {
+          funil: extrairFunil(d.CampaignName),
           uniqueId: d.UniqueID,
           day: d.Day,
           accountId: d.AccountID || "",
