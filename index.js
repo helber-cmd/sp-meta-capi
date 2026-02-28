@@ -953,7 +953,6 @@ app.post("/ads/metrics", async (req, res) => {
       salvos++;
     }
 
-    console.log(`✅ [ADS] ${salvos} registros salvos.`);
     res.json({ ok: true, salvos });
   } catch (e) {
     console.error("❌ [ADS] Erro:", e.message);
