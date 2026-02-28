@@ -257,8 +257,25 @@ const EVENT_MAP = {
   bilhete_superbet: {
     event_name: "Bilhete_Superbet",
     extra_custom_data: { origem: "whatsapp", produto: "bilhete_superbet" }
-  }
+  },
+
+f01: {
+  event_name: "Start_F01",
+  extra_custom_data: { origem: "whatsapp", funil: "f01" }
+},
+
+start_f03: {
+  event_name: "Start_F03",
+  extra_custom_data: { origem: "whatsapp", funil: "f03" }
+},
+
+start_f04: {
+  event_name: "Start_F04",
+  extra_custom_data: { origem: "whatsapp", funil: "f04" }
+}
 };
+
+
 
 
 const SMARTICO_EVENT_MAP = { registro: "Registro_vupibet", ftd: "ftd_vupibet", qftd: "qftd_vupibet", deposito: "deposito_vupibet" };
