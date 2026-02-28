@@ -180,7 +180,7 @@ async function buscarDadosDashboard(dataFiltro = null) {
   const dataExibida = dataFiltro || hojeStr;
 
   // Busca métricas de ads agrupadas por funil
-  // Converte "2026-02-26" -> "26/02/2026" para bater com o formato do N8N
+  // Converte "2026-02-27" -> "27/02/2026" para bater com o formato do N8N
 const [ano, mes, dia] = dataExibida.split("-");
 const dayFormatado = `${dia}/${mes}/${ano}`;
 
