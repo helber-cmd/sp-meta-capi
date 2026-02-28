@@ -994,6 +994,10 @@ app.post("/ads/metrics", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+app.get("/debug/ads", async (req, res) => {
+  const registros = await prisma.adMetrics.findMany({ take: 5 });
+  res.json(registros);
+});
 // =========================
 // DASHBOARD DE MÉTRICAS DO DIA
 // =========================
