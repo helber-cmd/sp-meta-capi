@@ -179,7 +179,32 @@ async function buscarDadosDashboard(dataFiltro = null) {
   const hojeStr = agoraBrasilia.toISOString().split("T")[0];
   const dataExibida = dataFiltro || hojeStr;
 
-  return { hoje: dataExibida, totais, hojeStr };
+  // Busca métricas de ads agrupadas por funil
+  const adStats = await prisma.adMetrics.groupBy({
+    by: ['funil'],
+    where: { day: dataExibida },
+    _sum: {
+      amountSpent: true,
+      impressions: true,
+      linkClicks: true,
+    },
+    _avg: {
+      ctr: true,
+      cpm: true,
+    },
+    orderBy: { funil: 'asc' }
+  });
+
+  const adsPorFunil = adStats.map(s => ({
+    funil: s.funil || "sem funil",
+    gasto: s._sum.amountSpent?.toFixed(2) || "0.00",
+    impressoes: s._sum.impressions || 0,
+    cliques: s._sum.linkClicks || 0,
+    ctr: s._avg.ctr?.toFixed(2) || "0.00",
+    cpm: s._avg.cpm?.toFixed(2) || "0.00",
+  }));
+
+  return { hoje: dataExibida, totais, hojeStr, adsPorFunil };
 }
 
 // Roda o relatório sozinho a cada 1 hora (para não sujar o log)
@@ -971,7 +996,7 @@ app.post("/ads/metrics", async (req, res) => {
 app.get("/dashboard", async (req, res) => {
   try {
     const dataFiltro = req.query.data || null;
-const { hoje, totais, hojeStr } = await buscarDadosDashboard(dataFiltro);
+const { hoje, totais, hojeStr, adsPorFunil } = await buscarDadosDashboard(dataFiltro);
   
     // Monta as linhas da tabela HTML
        const linhasTabela = totais.map(item => `
@@ -1038,6 +1063,35 @@ const { hoje, totais, hojeStr } = await buscarDadosDashboard(dataFiltro);
               </tbody>
             </table>
           ` : `<p class="no-data">Nenhum evento registrado hoje ainda.</p>`}
+          <div style="margin-top: 40px;">
+  <h2 style="text-align:center; color: #2c3e50;">📊 Métricas de Ads por Funil</h2>
+  ${adsPorFunil.length > 0 ? `
+    <table>
+      <thead>
+        <tr>
+          <th>Funil</th>
+          <th>Gasto (R$)</th>
+          <th>Impressões</th>
+          <th>Cliques</th>
+          <th>CTR (%)</th>
+          <th>CPM (R$)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${adsPorFunil.map(a => `
+          <tr>
+            <td>🎯 ${a.funil.toUpperCase()}</td>
+            <td>R$ ${a.gasto}</td>
+            <td>${a.impressoes.toLocaleString('pt-BR')}</td>
+            <td>${a.cliques.toLocaleString('pt-BR')}</td>
+            <td>${a.ctr}%</td>
+            <td>R$ ${a.cpm}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  ` : `<p class="no-data">Nenhuma métrica de ads para este dia.</p>`}
+</div> 
         </div>
       </body>
       </html>
