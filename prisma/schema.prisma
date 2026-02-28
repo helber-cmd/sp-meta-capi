@@ -45,6 +45,7 @@ model AdMetrics {
   campaignName   String
   adsetName      String?
   adName         String?
+  funil          String?
   amountSpent    Float    @default(0)
   impressions    Int      @default(0)
   linkClicks     Int      @default(0)
