@@ -914,7 +914,52 @@ app.post("/superbet/ftd", async (req, res) => {
   }
 });
 
+// =========================
+// FACEBOOK ADS METRICS (N8N)
+// =========================
+app.post("/ads/metrics", async (req, res) => {
+  try {
+    const items = Array.isArray(req.body) ? req.body : [req.body];
+    let salvos = 0;
 
+    for (const item of items) {
+      const d = item.json || item;
+      if (!d.UniqueID || !d.CampaignName) continue;
+
+      await prisma.adMetrics.upsert({
+        where: { uniqueId: d.UniqueID },
+        update: {
+          amountSpent: d.AmountSpent || 0,
+          impressions: d.Impressions || 0,
+          linkClicks: d.LinkClicks || 0,
+          cpm: d.CPM || 0,
+          ctr: d.CTR || 0,
+        },
+        create: {
+          uniqueId: d.UniqueID,
+          day: d.Day,
+          accountId: d.AccountID || "",
+          accountName: d.AccountName || "",
+          campaignName: d.CampaignName,
+          adsetName: d.AdSetName || "",
+          adName: d.AdName || "",
+          amountSpent: d.AmountSpent || 0,
+          impressions: d.Impressions || 0,
+          linkClicks: d.LinkClicks || 0,
+          cpm: d.CPM || 0,
+          ctr: d.CTR || 0,
+        }
+      });
+      salvos++;
+    }
+
+    console.log(`✅ [ADS] ${salvos} registros salvos.`);
+    res.json({ ok: true, salvos });
+  } catch (e) {
+    console.error("❌ [ADS] Erro:", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 // =========================
 // DASHBOARD DE MÉTRICAS DO DIA
 // =========================
