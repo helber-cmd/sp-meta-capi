@@ -1,21 +1,44 @@
-model AdMetrics {
-  id             String   @id @default(uuid())
-  uniqueId       String   @unique
-  day            String
-  accountId      String
-  accountName    String?
-  campaignName   String
-  adsetName      String?
-  adName         String?
-  amountSpent    Float    @default(0)
-  impressions    Int      @default(0)
-  linkClicks     Int      @default(0)
-  cpm            Float    @default(0)
-  ctr            Float    @default(0)
-  updatedAt      DateTime @updatedAt
-  createdAt      DateTime @default(now())
+generator client {
+  provider = "prisma-client-js"
+}
 
-  @@index([day])
-  @@index([campaignName])
-  @@index([accountId])
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model LeadContext {
+  id        String   @id @default(uuid())
+  lead_id   String   @unique
+  afp       String?  
+
+  // cookies/ids
+  fbp       String?
+  fbc       String?
+  fbclid    String?
+
+  // utms
+  utm_source   String?
+  utm_medium   String?
+  utm_campaign String?
+  utm_content  String?
+
+  // device
+  client_ip_address   String?
+  client_user_agent   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([afp])
+  @@index([createdAt])
+}
+
+// Tabela para o Placar no Log
+model EventLog {
+  id        String   @id @default(uuid())
+  type      String
+  provider  String
+  extra     String?
+  createdAt DateTime @default(now())
 }
