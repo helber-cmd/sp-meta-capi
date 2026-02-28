@@ -180,9 +180,13 @@ async function buscarDadosDashboard(dataFiltro = null) {
   const dataExibida = dataFiltro || hojeStr;
 
   // Busca métricas de ads agrupadas por funil
-  const adStats = await prisma.adMetrics.groupBy({
+  // Converte "2026-02-26" -> "26/02/2026" para bater com o formato do N8N
+const [ano, mes, dia] = dataExibida.split("-");
+const dayFormatado = `${dia}/${mes}/${ano}`;
+
+const adStats = await prisma.adMetrics.groupBy({
     by: ['funil'],
-    where: { day: dataExibida },
+    where: { day: dayFormatado },
     _sum: {
       amountSpent: true,
       impressions: true,
