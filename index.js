@@ -373,6 +373,30 @@ async function sendToPixel(event, pixelId, accessToken) {
 }
 
 // =========================
+// ENCAMINHAMENTO PARA RAPZ
+// =========================
+async function forwardToRapz(data) {
+  try {
+    const rapzUrl = "https://n.rapz.com.br/webhook/novibet";
+    
+    // Enviamos exatamente os mesmos dados que recebemos da Novibet
+    const response = await fetch(rapzUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data )
+    });
+
+    if (response.ok) {
+      console.log("✅ [RAPZ] Dados encaminhados com sucesso.");
+    } else {
+      console.log(`⚠️ [RAPZ] Erro ao encaminhar: ${response.status}`);
+    }
+  } catch (err) {
+    console.error("❌ [RAPZ] Erro fatal no encaminhamento:", err.message);
+  }
+}
+
+// =========================
 // Rastreamento de Erros de Envio para o Meta
 // =========================
 async function sendToMeta(event, slotNumber = null) {
@@ -644,6 +668,23 @@ app.get("/esportivabet/postback", async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Função para encaminhar os dados para a Rapz de forma segura //
+async function forwardToRapz(data) {
+  try {
+    const rapzUrl = "https://n.rapz.com.br/webhook/novibet";
+    // Usamos fetch para enviar um POST com os dados da Novibet
+    fetch(rapzUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data )
+    }).catch(err => console.error("❌ [RAPZ] Erro no fetch:", err.message));
+    
+    console.log("📤 [RAPZ] Encaminhamento disparado.");
+  } catch (err) {
+    console.error("❌ [RAPZ] Erro ao preparar encaminhamento:", err.message);
+  }
+}
+
 // =====================================================================
 // NOVIBET REGISTRO (VERSÃO CORRIGIDA E OTIMIZADA)
 // =====================================================================
@@ -653,6 +694,9 @@ app.post("/novibet/registro", async (req, res) => {
     console.log("🚨 [NOVIBET] Novo REGISTRO recebido.");
     const data = { ...req.query, ...req.body };
     console.log("📦 DADOS BRUTOS (REGISTRO):", JSON.stringify(data, null, 2));
+    
+    // -> NOVO: Encaminha para a Rapz sem travar o seu fluxo principal
+    forwardToRapz(data);
 
     // -> PASSO 1: Identificar a chave de busca correta (o lead_id da SendPulse)
     // A Novibet retorna o nosso lead_id nos parâmetros s1, s2, etc.
@@ -730,6 +774,9 @@ app.post("/novibet/deposito", async (req, res) => {
     console.log("💰 [NOVIBET] Novo DEPÓSITO recebido.");
     const data = { ...req.query, ...req.body };
     console.log("📦 DADOS BRUTOS (DEPÓSITO):", JSON.stringify(data, null, 2));
+
+     // -> NOVO: Encaminha para a Rapz (sem await para não atrasar o seu fluxo)
+    forwardToRapz(data);
 
     // -> PASSO 1: Mesma lógica do registro para encontrar a chave
     const leadIdFromNovibet = cleanStr(data.s2) || cleanStr(data.s1);
