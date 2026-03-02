@@ -478,21 +478,6 @@ async function getLeadContextByAfp(afp) {
   }
 }
 
-async function forwardToRapz(data) {
-  try {
-    const rapzUrl = "https://n.rapz.com.br/webhook/novibet";
-    fetch(rapzUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data )
-    }).catch(err => console.error("❌ [RAPZ] Erro no fetch:", err.message));
-    
-    console.log("📤 [RAPZ] Encaminhamento disparado.");
-  } catch (err) {
-    console.error("❌ [RAPZ] Erro ao preparar encaminhamento:", err.message);
-  }
-}
-
 // --- FUNÇÃO QUE ESTAVA FALTANDO ---
 function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
   const email = normalizeEmail(vars.email || vars.em);
