@@ -477,6 +477,22 @@ async function getLeadContextByAfp(afp) {
     return null; 
   }
 }
+
+async function forwardToRapz(data) {
+  try {
+    const rapzUrl = "https://n.rapz.com.br/webhook/novibet";
+    fetch(rapzUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data )
+    }).catch(err => console.error("❌ [RAPZ] Erro no fetch:", err.message));
+    
+    console.log("📤 [RAPZ] Encaminhamento disparado.");
+  } catch (err) {
+    console.error("❌ [RAPZ] Erro ao preparar encaminhamento:", err.message);
+  }
+}
+
 // --- FUNÇÃO QUE ESTAVA FALTANDO ---
 function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
   const email = normalizeEmail(vars.email || vars.em);
@@ -667,23 +683,6 @@ app.get("/esportivabet/postback", async (req, res) => {
     res.json({ ok: true, meta: metaResp });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-
-// Função para encaminhar os dados para a Rapz de forma segura //
-async function forwardToRapz(data) {
-  try {
-    const rapzUrl = "https://n.rapz.com.br/webhook/novibet";
-    // Usamos fetch para enviar um POST com os dados da Novibet
-    fetch(rapzUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data )
-    }).catch(err => console.error("❌ [RAPZ] Erro no fetch:", err.message));
-    
-    console.log("📤 [RAPZ] Encaminhamento disparado.");
-  } catch (err) {
-    console.error("❌ [RAPZ] Erro ao preparar encaminhamento:", err.message);
-  }
-}
 
 // =====================================================================
 // NOVIBET REGISTRO (VERSÃO CORRIGIDA E OTIMIZADA)
