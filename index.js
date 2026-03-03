@@ -1261,7 +1261,7 @@ app.get("/dashboard", async (req, res) => {
         <header class="bg-black text-white shadow-lg">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row justify-between items-center">
             <div class="flex items-center gap-3">
-              <span class="text-3xl">🎯</span>
+              <span class="text-3xl"></span>
               <h1 class="text-2xl font-bold tracking-tight"><span class="font-extrabold text-3xl">3C Sports</span> <span class="text-gray-400 font-light hidden sm:inline">| Projeto Pilhado - Tráfego.</span></h1>
             </div>
             
