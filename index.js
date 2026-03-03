@@ -683,7 +683,7 @@ app.get("/smartico/postback", async (req, res) => {
 });
 
 // =====================================================================
-// ROTA ESPORTIVABET - SLOT 3 - DASHBOARD ON / META AGUARDANDO UUID
+// ROTA ESPORTIVABET - SLOT 3 - LIBERADA COM UUID (AFP3)
 // =====================================================================
 app.get("/esportivabet/postback", async (req, res) => {
   try {
@@ -691,63 +691,57 @@ app.get("/esportivabet/postback", async (req, res) => {
     
     console.log("\n---------------------------------------------------------");
     console.log("⚽ [ESPORTIVABET] Postback recebido.");
-    console.log("📦 DADOS BRUTOS:", JSON.stringify(q, null, 2));
 
     // 1. Identifica o Evento
     const evType = (q.ev || "").toLowerCase().trim();
     let metaEventName = "";
     let isFtd = false;
 
+    // Usando nomes padrão do Meta para otimizar mais rápido no Slot 3
     if (evType === "reg") {
-        metaEventName = "registro"; // Nome limpo para o dashboard somar
+        metaEventName = "CompleteRegistration"; 
     } else if (evType === "ftd" || evType === "qftd") {
-        metaEventName = "ftd"; // Nome limpo para o dashboard somar
+        metaEventName = "Purchase";
         isFtd = true;
     } else {
         console.log(`⚠️ [ESPORTIVABET] Evento ignorado: ${evType}`);
         return res.json({ ok: true, reason: "event_ignored" });
     }
 
-    // 2. SLOT DEFINIDO: SLOT 3
-    const slotNumber = 3; 
+    // 2. Parâmetros de Identificação 
+    const funil = (q.afp || "").toLowerCase().trim() || "direto"; // 🎯 Funil no afp
+    const leadId = cleanStr(q.afp3); // ✅ UUID agora vem no afp3
 
-    // 3. MAPEAMENTO DO FUNIL (Vindo no afp conforme solicitado)
-    const funil = (q.afp || "").toLowerCase().trim() || "direto";
-    
-    // VARIÁVEL QUE O TIME VAI DEFINIR (Aguardando)
-    const leadId = q.VARIAVEL_DO_TIME; 
-
-    // 4. SALVA NO DASHBOARD (Aparece no Log Geral, Painel de Ads e Taxas)
+    // 3. SALVA NO DASHBOARD (Sempre salva para você não perder a métrica)
     await prisma.eventLog.create({
         data: { 
-            type: metaEventName, 
+            type: isFtd ? "ftd" : "registro", 
             provider: "esportivabet", 
-            extra: funil // Aqui garante que o f03 seja contabilizado em todas as tabelas
+            extra: funil 
         }
-    }).catch((e)=>{ console.error("Erro ao salvar no banco:", e.message) });
+    }).catch((e) => console.error("Erro ao salvar no banco:", e.message));
 
-    // 5. TRAVA DE SEGURANÇA PRO META
+    // 4. TRAVA DE SEGURANÇA E ENVIO META
     if (!isValidUUID(leadId)) {
-        console.log(`🚫 [ESPORTIVABET] Salvo no Dash (${funil}), mas bloqueado pro Meta (Slot ${slotNumber} aguardando UUID)`);
+        console.log(`🚫 [ESPORTIVABET] Salvo no Dash (${funil}), mas sem UUID válido no afp3: "${leadId}"`);
         return res.json({ ok: true, dash: "salvo", meta: "bloqueado_sem_uuid" });
     }
 
-    // =================================================================
-    // LOGICA DO META (SÓ RODA COM LEAD_ID VÁLIDO)
-    // =================================================================
+    // 5. Match e Construção do Evento pro Meta
     const context = await getLeadContextByAfp(leadId);
     const valueParam = parseFloat(q.first_deposit_amount || q.value) || (isFtd ? 30 : 0);
 
     const event = {
-      event_name: metaEventName === "registro" ? "CompleteRegistration" : "Purchase",
+      event_name: metaEventName,
       event_time: Math.floor(Date.now() / 1000),
       action_source: "website",
-      event_id: `esp_${leadId}_${metaEventName}_${Date.now()}`,
+      // Dedupe blindado: pur_esp_UUID ou reg_esp_UUID (sem Date.now() para não duplicar no Meta)
+      event_id: `${isFtd ? 'pur' : 'reg'}_esp_${leadId}`, 
       user_data: {
         client_ip_address: context?.client_ip_address || getClientIp(req),
         client_user_agent: context?.client_user_agent || getUserAgent(req), 
-        fbp: context?.fbp,
-        fbc: context?.fbc,
+        fbp: context?.fbp || undefined,
+        fbc: context?.fbc || undefined,
         external_id: [sha256(leadId)] 
       },
       custom_data: {
@@ -758,17 +752,17 @@ app.get("/esportivabet/postback", async (req, res) => {
       }
     };
 
-    await sendToMeta(event, slotNumber);
-    console.log(`🚀 [ESPORTIVABET] Enviado ao Meta (Slot ${slotNumber})`);
+    // 6. Envia pro Slot 3
+    const metaResp = await sendToMeta(event, 3); 
+    console.log(`🚀 [ESPORTIVABET] Processado: ${metaEventName} | Funil: ${funil}`);
 
-    res.json({ ok: true, dash: "salvo", meta: "enviado" });
+    res.json({ ok: true, dash: "salvo", meta: metaResp });
 
   } catch (err) {
     console.error("❌ [ERRO ESPORTIVABET]:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
 // =====================================================================
 // NOVIBET REGISTRO (VERSÃO CORRIGIDA E OTIMIZADA)
 // =====================================================================
