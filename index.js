@@ -1099,6 +1099,8 @@ const { hoje, totais, hojeStr, adsPorFunil, eventosPorFunil } = await buscarDado
           h1 { text-align: center; padding: 20px; background-color: #2c3e50; color: #fff; margin: 0; }
           h2 { text-align: center; color: #7f8c8d; font-weight: normal; }
           table { width: 100%; border-collapse: collapse; }
+.ads-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ads-table-wrap table { min-width: 900px; }
           th, td { padding: 15px; text-align: left; border-bottom: 1px solid #ddd; }
           th { background-color: #ecf0f1; font-weight: bold; }
           tr:hover { background-color: #f9f9f9; }
@@ -1143,6 +1145,7 @@ const { hoje, totais, hojeStr, adsPorFunil, eventosPorFunil } = await buscarDado
           <div style="margin-top: 40px;">
   <h2 style="text-align:center; color: #2c3e50;">📊 Métricas de Ads por Funil</h2>
   ${adsPorFunil.length > 0 ? `
+    <div class="ads-table-wrap">
     <table>
       <thead>
         <tr>
@@ -1186,6 +1189,7 @@ const { hoje, totais, hojeStr, adsPorFunil, eventosPorFunil } = await buscarDado
         }).join('')}
       </tbody>
     </table>
+    </div>
   ` : `<p class="no-data">Nenhuma métrica de ads para este dia.</p>`}
 </div> 
         </div>
