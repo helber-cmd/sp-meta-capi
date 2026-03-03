@@ -208,11 +208,49 @@ const adStats = await prisma.adMetrics.groupBy({
     cpm: s._avg.cpm?.toFixed(2) || "0.00",
   }));
 
-  return { hoje: dataExibida, totais, hojeStr, adsPorFunil };
+// Busca eventos por funil do EventLog
+  const eventosNovibet = await prisma.eventLog.groupBy({
+    by: ['type', 'extra'],
+    where: {
+      createdAt: { gte: diaInicio, lte: diaFim },
+      provider: 'novibet',
+      extra: { not: null }
+    },
+    _count: { type: true }
+  });
+
+  const eventosSendpulse = await prisma.eventLog.groupBy({
+    by: ['type'],
+    where: {
+      createdAt: { gte: diaInicio, lte: diaFim },
+      provider: 'sendpulse',
+      type: { startsWith: 'Start_' }
+    },
+    _count: { type: true }
+  });
+
+  const eventosPorFunil = {};
+
+  for (const e of eventosSendpulse) {
+    const match = e.type.toLowerCase().match(/(f[0-9]+)/);
+    if (!match) continue;
+    const funil = match[1];
+    if (!eventosPorFunil[funil]) eventosPorFunil[funil] = { start: 0, registro: 0, ftd: 0 };
+    eventosPorFunil[funil].start += e._count.type;
+  }
+
+  for (const e of eventosNovibet) {
+    const funil = (e.extra || "").toLowerCase();
+    if (!eventosPorFunil[funil]) eventosPorFunil[funil] = { start: 0, registro: 0, ftd: 0 };
+    if (e.type === 'registro') eventosPorFunil[funil].registro += e._count.type;
+    if (e.type === 'ftd' || e.type === 'deposito') eventosPorFunil[funil].ftd += e._count.type;
+  }
+
+  return { hoje: dataExibida, totais, hojeStr, adsPorFunil, eventosPorFunil };
 }
 
 // Roda o relatório sozinho a cada 1 hora (para não sujar o log)
-setInterval(relatorioGeral, 60 * 60 * 1000); 
+setInterval(relatorioGeral, 60 * 60 * 1000);
 
 // 👆👆👆 FIM DA COLAGEM 👆👆👆
 
@@ -1035,7 +1073,7 @@ app.get("/debug/ads", async (req, res) => {
 app.get("/dashboard", async (req, res) => {
   try {
     const dataFiltro = req.query.data || null;
-const { hoje, totais, hojeStr, adsPorFunil } = await buscarDadosDashboard(dataFiltro);
+const { hoje, totais, hojeStr, adsPorFunil, eventosPorFunil } = await buscarDadosDashboard(dataFiltro);
   
     // Monta as linhas da tabela HTML
        const linhasTabela = totais.map(item => `
@@ -1114,19 +1152,38 @@ const { hoje, totais, hojeStr, adsPorFunil } = await buscarDadosDashboard(dataFi
           <th>Cliques</th>
           <th>CTR (%)</th>
           <th>CPM (R$)</th>
+          <th>Start</th>
+          <th>Registro</th>
+          <th>FTD/Dep</th>
+          <th>R$/Start</th>
+          <th>R$/Reg</th>
+          <th>R$/FTD</th>
         </tr>
       </thead>
       <tbody>
-        ${adsPorFunil.map(a => `
-          <tr>
-            <td>🎯 ${a.funil.toUpperCase()}</td>
-            <td>R$ ${a.gasto}</td>
-            <td>${a.impressoes.toLocaleString('pt-BR')}</td>
-            <td>${a.cliques.toLocaleString('pt-BR')}</td>
-            <td>${a.ctr}%</td>
-            <td>R$ ${a.cpm}</td>
-          </tr>
-        `).join('')}
+        ${adsPorFunil.map(a => {
+          const ev = eventosPorFunil[a.funil] || { start: 0, registro: 0, ftd: 0 };
+          const gasto = parseFloat(a.gasto);
+          const cStart = ev.start > 0 ? (gasto / ev.start).toFixed(2) : '-';
+          const cReg = ev.registro > 0 ? (gasto / ev.registro).toFixed(2) : '-';
+          const cFtd = ev.ftd > 0 ? (gasto / ev.ftd).toFixed(2) : '-';
+          return `
+            <tr>
+              <td>🎯 ${a.funil.toUpperCase()}</td>
+              <td>R$ ${a.gasto}</td>
+              <td>${a.impressoes.toLocaleString('pt-BR')}</td>
+              <td>${a.cliques.toLocaleString('pt-BR')}</td>
+              <td>${a.ctr}%</td>
+              <td>R$ ${a.cpm}</td>
+              <td>${ev.start}</td>
+              <td>${ev.registro}</td>
+              <td>${ev.ftd}</td>
+              <td>${cStart === '-' ? '-' : 'R$ ' + cStart}</td>
+              <td>${cReg === '-' ? '-' : 'R$ ' + cReg}</td>
+              <td>${cFtd === '-' ? '-' : 'R$ ' + cFtd}</td>
+            </tr>
+          `;
+        }).join('')}
       </tbody>
     </table>
   ` : `<p class="no-data">Nenhuma métrica de ads para este dia.</p>`}
