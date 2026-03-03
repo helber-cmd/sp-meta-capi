@@ -683,91 +683,85 @@ app.get("/smartico/postback", async (req, res) => {
 });
 
 // =====================================================================
-// ROTA ESPORTIVABET - 100% BLINDADA E OTIMIZADA
+// ROTA ESPORTIVABET - SLOT 3 - DASHBOARD ON / META AGUARDANDO UUID
 // =====================================================================
 app.get("/esportivabet/postback", async (req, res) => {
   try {
     const q = req.query;
     
-    // 1. FIM DO SERVIDOR CEGO (Agora você vê tudo no Render)
     console.log("\n---------------------------------------------------------");
     console.log("⚽ [ESPORTIVABET] Postback recebido.");
     console.log("📦 DADOS BRUTOS:", JSON.stringify(q, null, 2));
 
-    // 2. Identifica o Evento exato que você pediu
-    const evType = safeString(q.ev).toLowerCase().trim();
+    // 1. Identifica o Evento
+    const evType = (q.ev || "").toLowerCase().trim();
     let metaEventName = "";
     let isFtd = false;
 
     if (evType === "reg") {
-        metaEventName = "registro_esportiva";
-    } else if (evType === "ftd") {
-        metaEventName = "ftd_esportiva";
-        isFtd = true;
-    } else if (evType === "qftd") {
-        metaEventName = "qftd_esportiva"; // Deixei de bônus caso você use depois
+        metaEventName = "registro"; // Nome limpo para o dashboard somar
+    } else if (evType === "ftd" || evType === "qftd") {
+        metaEventName = "ftd"; // Nome limpo para o dashboard somar
         isFtd = true;
     } else {
-        console.log(`⚠️ [ESPORTIVABET] Evento não mapeado: ${evType}`);
+        console.log(`⚠️ [ESPORTIVABET] Evento ignorado: ${evType}`);
         return res.json({ ok: true, reason: "event_ignored" });
     }
 
-    // 3. Identifica ID e Slot
-    // Note que nos seus links, o ID sempre chega no parâmetro "afp"
-    const leadId = cleanStr(q.afp);
-    const slotNumber = parseInt(q.slot) || 4; // Usa o slot 4 por padrão se não vier na URL
+    // 2. SLOT DEFINIDO: SLOT 3
+    const slotNumber = 3; 
 
-    // Trava de Segurança (O Goleiro)
+    // 3. MAPEAMENTO DO FUNIL (Vindo no afp conforme solicitado)
+    const funil = (q.afp || "").toLowerCase().trim() || "direto";
+    
+    // VARIÁVEL QUE O TIME VAI DEFINIR (Aguardando)
+    const leadId = q.VARIAVEL_DO_TIME; 
+
+    // 4. SALVA NO DASHBOARD (Aparece no Log Geral, Painel de Ads e Taxas)
+    await prisma.eventLog.create({
+        data: { 
+            type: metaEventName, 
+            provider: "esportivabet", 
+            extra: funil // Aqui garante que o f03 seja contabilizado em todas as tabelas
+        }
+    }).catch((e)=>{ console.error("Erro ao salvar no banco:", e.message) });
+
+    // 5. TRAVA DE SEGURANÇA PRO META
     if (!isValidUUID(leadId)) {
-        console.log(`🚫 [ESPORTIVABET] ID inválido ou ausente (afp): ${leadId}`);
-        return res.json({ ok: true, filtered: true, reason: "invalid_uuid" });
+        console.log(`🚫 [ESPORTIVABET] Salvo no Dash (${funil}), mas bloqueado pro Meta (Slot ${slotNumber} aguardando UUID)`);
+        return res.json({ ok: true, dash: "salvo", meta: "bloqueado_sem_uuid" });
     }
 
-    // 4. Match no Banco
+    // =================================================================
+    // LOGICA DO META (SÓ RODA COM LEAD_ID VÁLIDO)
+    // =================================================================
     const context = await getLeadContextByAfp(leadId);
-    if (context) {
-        console.log(`✅ [ESPORTIVABET] Match confirmado para ${leadId}`);
-    } else {
-        console.warn(`⚠️ [ESPORTIVABET] Sem Match no banco para ${leadId}`);
-    }
+    const valueParam = parseFloat(q.first_deposit_amount || q.value) || (isFtd ? 30 : 0);
 
-    // 5. Captura Valores Inteligente
-    // Tenta ler o first_deposit_amount. Se não tiver, assume 30 pro FTD e 0 pro Registro.
-    const valueParam = parseValue(q.first_deposit_amount) || parseValue(q.value) || (isFtd ? 30 : 0);
-    const currencyParam = cleanStr(q.currency) || cleanStr(q.payout_currency) || "BRL";
-
-    // 6. Monta o Evento (Padrão Ouro do Meta)
     const event = {
-      event_name: metaEventName,
+      event_name: metaEventName === "registro" ? "CompleteRegistration" : "Purchase",
       event_time: Math.floor(Date.now() / 1000),
       action_source: "website",
-      event_id: `esportiva_${leadId}_${metaEventName}_${Date.now()}`, // 🚀 Deduplicação ativada!
+      event_id: `esp_${leadId}_${metaEventName}_${Date.now()}`,
       user_data: {
         client_ip_address: context?.client_ip_address || getClientIp(req),
-        client_user_agent: context?.client_user_agent || getUserAgent(req), // 🚀 Navegador (Aumenta nota)
+        client_user_agent: context?.client_user_agent || getUserAgent(req), 
         fbp: context?.fbp,
         fbc: context?.fbc,
-        external_id: [sha256(leadId)] // 🚀 External ID (Aumenta match rate)
+        external_id: [sha256(leadId)] 
       },
       custom_data: {
-        origem: "esportivabet", // 🚀 Nome corrigido (estava "smartico")
-        funil: cleanStr(q.afp1), // Salva o UTM/Funil
+        origem: "esportivabet",
+        funil: funil, 
         value: valueParam,
-        currency: currencyParam,
-        lead_id: leadId,
-        customer_id: cleanStr(q.customer_id)
+        currency: "BRL"
       }
     };
 
-    // 7. Envia para o Master + Slot Específico (4)
     await sendToMeta(event, slotNumber);
+    console.log(`🚀 [ESPORTIVABET] Enviado ao Meta (Slot ${slotNumber})`);
 
-    // 8. Salva no seu Dashboard
-    await prisma.eventLog.create({
-        data: { type: metaEventName, provider: "esportivabet" }
-    }).catch(()=>{});
-
-    res.json({ ok: true });
+    res.json({ ok: true, dash: "salvo", meta: "enviado" });
 
   } catch (err) {
     console.error("❌ [ERRO ESPORTIVABET]:", err.message);
