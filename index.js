@@ -1127,41 +1127,65 @@ app.get("/debug/ads", async (req, res) => {
   res.json(registros);
 });
 // =========================
-// DASHBOARD DE MÉTRICAS DO DIA (VISUAL PREMIUM)
+// DASHBOARD DE MÉTRICAS - 3C SPORTS | PROJETO PILHADO
 // =========================
 app.get("/dashboard", async (req, res) => {
   try {
-    const dataFiltro = req.query.data || null;
-    const { hoje, totais, hojeStr, adsPorFunil, eventosPorFunil } = await buscarDadosDashboard(dataFiltro);
+    // -> LOGICA DO SELETOR DE PERÍODOS (INTERFACE)
+    // Lê os parâmetros de data de início e fim da URL
+    const dataInicioFiltro = req.query.data_inicio || null;
+    const dataFimFiltro = req.query.data_fim || null;
 
-    // --- CÁLCULO DOS KPIs GERAIS (NOVIDADE) ---
+    // Função auxiliar para definir a exibição
+    const displayDate = (dateFiltro) => {
+        if (!dateFiltro) return new Date().toISOString().split("T")[0];
+        return dateFiltro;
+    }
+    const dataInicioStr = displayDate(dataInicioFiltro);
+    const dataFimStr = displayDate(dataFimFiltro);
+
+    // Formata as datas para exibição no H2 (de DD/MM/AAAA)
+    const [anoI, mesI, diaI] = dataInicioStr.split("-");
+    const dataInicioExibida = `${diaI}/${mesI}/${anoI}`;
+    const [anoF, mesF, diaF] = dataFimStr.split("-");
+    const dataFimExibida = `${diaF}/${mesF}/${anoF}`;
+
+    // -> CHAMADA DOS DADOS
+    // Passamos o período para a função de busca. 
+    // Por enquanto, o Prisma original processa apenas um dia específico (o início).
+    const { totais, adsPorFunil, eventosPorFunil } = await buscarDadosDashboard(dataInicioFiltro, dataFimFiltro);
+
+    // Formatador nativo para moeda brasileira (ex: R$ 3.000,00)
+    const formatBRL = (valor) => {
+      const num = parseFloat(valor) || 0;
+      return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    };
+
+    // --- CÁLCULO DOS KPIs GERAIS (SOMENTE PAINEL DE ADS - PEDIDO DO KAUE) ---
     let kpiGasto = 0;
+    let kpiStarts = 0;
     let kpiRegistros = 0;
     let kpiFtds = 0;
 
-    adsPorFunil.forEach(a => { kpiGasto += parseFloat(a.gasto || 0); });
-    
-    // Conta FTDs e Registros apenas dos funis mapeados nos Ads para o KPI
-    Object.values(eventosPorFunil).forEach(ev => {
-        kpiRegistros += (ev.registro || 0);
-        kpiFtds += (ev.ftd || 0);
+    // O loop soma os dados de starts, registros, ftds e gastos apenas dos funis mapeados nos Ads
+    adsPorFunil.forEach(a => { 
+        kpiGasto += parseFloat(a.gasto || 0); 
+        
+        // Pega os eventos correspondentes a esse funil específico (ou zera se não tiver)
+        const ev = eventosPorFunil[a.funil] || { start: 0, registro: 0, ftd: 0 };
+        
+        kpiStarts += ev.start;
+        kpiRegistros += ev.registro;
+        kpiFtds += ev.ftd;
     });
 
-    const kpiCustoFtd = kpiFtds > 0 ? (kpiGasto / kpiFtds).toFixed(2) : "0.00";
+    const kpiCustoFtdNum = kpiFtds > 0 ? (kpiGasto / kpiFtds) : 0;
 
-    // --- TABELA 1: EVENTOS BRUTOS ---
-    const linhasTabela = totais.map(item => {
-      // Cores dinâmicas para os provedores
-      let badgeColor = "bg-gray-100 text-gray-800";
-      if (item.provider === 'sendpulse') badgeColor = "bg-blue-100 text-blue-800";
-      if (item.provider === 'novibet') badgeColor = "bg-emerald-100 text-emerald-800";
-      if (item.provider === 'esportivabet') badgeColor = "bg-orange-100 text-orange-800";
-      if (item.provider === 'superbet') badgeColor = "bg-red-100 text-red-800";
-
-      return `
+    // --- TABELA 1: EVENTOS BRUTOS (SERVIDOR) - BADGES GRAYSCALE ---
+    const linhasTabela = totais.map(item => `
       <tr class="hover:bg-gray-50 transition-colors">
         <td class="px-6 py-4 whitespace-nowrap">
-          <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${badgeColor}">
+          <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
             ${item.provider === 'sendpulse' ? '📱' : '🎰'} ${item.provider.toUpperCase()}
           </span>
         </td>
@@ -1173,32 +1197,33 @@ app.get("/dashboard", async (req, res) => {
           ${item.contagem}
         </td>
       </tr>
-    `}).join('');
+    `).join('');
 
-    // --- TABELA 2: MÉTRICAS DE ADS ---
+    // --- TABELA 2: MÉTRICAS DE ADS (PAINEL) - GRAYSCALE TEXT ---
     const linhasAds = adsPorFunil.map(a => {
       const ev = eventosPorFunil[a.funil] || { start: 0, registro: 0, ftd: 0 };
       const gasto = parseFloat(a.gasto);
-      const cStart = ev.start > 0 ? (gasto / ev.start).toFixed(2) : '-';
-      const cReg = ev.registro > 0 ? (gasto / ev.registro).toFixed(2) : '-';
-      const cFtd = ev.ftd > 0 ? (gasto / ev.ftd).toFixed(2) : '-';
+      
+      const cStartNum = ev.start > 0 ? (gasto / ev.start) : 0;
+      const cRegNum = ev.registro > 0 ? (gasto / ev.registro) : 0;
+      const cFtdNum = ev.ftd > 0 ? (gasto / ev.ftd) : 0;
       
       return `
         <tr class="hover:bg-gray-50 transition-colors border-b border-gray-100">
-          <td class="px-4 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 uppercase">🎯 ${a.funil}</td>
-          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">R$ ${a.gasto}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 uppercase">🎯 ${a.funil}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${formatBRL(gasto)}</td>
           <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${a.impressoes.toLocaleString('pt-BR')}</td>
           <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${a.cliques.toLocaleString('pt-BR')}</td>
           <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${a.ctr}%</td>
-          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">R$ ${a.cpm}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${formatBRL(a.cpm)}</td>
           
           <td class="px-4 py-4 whitespace-nowrap text-sm font-semibold text-gray-800 bg-blue-50/30">${ev.start}</td>
           <td class="px-4 py-4 whitespace-nowrap text-sm font-semibold text-gray-800 bg-blue-50/30">${ev.registro}</td>
           <td class="px-4 py-4 whitespace-nowrap text-sm font-bold text-emerald-600 bg-emerald-50/30">${ev.ftd}</td>
           
-          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">R$ ${cStart}</td>
-          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">R$ ${cReg}</td>
-          <td class="px-4 py-4 whitespace-nowrap text-sm font-bold ${cFtd !== '-' && cFtd > 50 ? 'text-red-600' : 'text-emerald-600'}">R$ ${cFtd}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${ev.start > 0 ? formatBRL(cStartNum) : '-'}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${ev.registro > 0 ? formatBRL(cRegNum) : '-'}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm font-bold ${cFtdNum > 50 ? 'text-red-600' : 'text-emerald-600'}">${ev.ftd > 0 ? formatBRL(cFtdNum) : '-'}</td>
         </tr>
       `;
     }).join('');
@@ -1210,11 +1235,11 @@ app.get("/dashboard", async (req, res) => {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Dashboard | Tracker</title>
+        <title>3C Sports | Analytics</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
-          body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+          body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; color: #111; }
           /* Scrollbar customizada para tabelas */
           ::-webkit-scrollbar { height: 8px; width: 8px; }
           ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
@@ -1222,20 +1247,28 @@ app.get("/dashboard", async (req, res) => {
           ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
         </style>
       </head>
-      <body class="text-gray-800 antialiased">
+      <body class="antialiased">
         
-        <header class="bg-indigo-900 text-white shadow-lg">
+        <header class="bg-black text-white shadow-lg">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row justify-between items-center">
             <div class="flex items-center gap-3">
               <span class="text-3xl">🎯</span>
-              <h1 class="text-2xl font-bold tracking-tight">CAPI Tracker <span class="text-indigo-300 font-light hidden sm:inline">| Performance Analytics</span></h1>
+              <h1 class="text-2xl font-bold tracking-tight"><span class="font-extrabold text-3xl">3C Sports</span> <span class="text-gray-400 font-light hidden sm:inline">| Projeto Pilhado - Tráfego.</span></h1>
             </div>
             
-            <form method="GET" action="/dashboard" class="mt-4 sm:mt-0 flex items-center gap-2 bg-indigo-800 p-1.5 rounded-lg border border-indigo-700">
-              <input type="date" name="data" value="${hoje}" max="${hojeStr}" 
-                class="bg-indigo-900 text-white border-none rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none color-scheme-dark">
-              <button type="submit" class="bg-indigo-500 hover:bg-indigo-400 text-white font-medium px-4 py-1.5 rounded-md text-sm transition-colors shadow-sm">
-                Filtrar
+            <form method="GET" action="/dashboard" class="mt-4 sm:mt-0 flex flex-col sm:flex-row items-center gap-3 bg-gray-800 p-2 rounded-lg border border-gray-700">
+              <div class="flex items-center gap-2">
+                  <label class="text-xs text-gray-300 font-medium">De:</label>
+                  <input type="date" name="data_inicio" value="${dataInicioStr}"
+                    class="bg-gray-900 text-white border-none rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-gray-400 outline-none color-scheme-dark">
+              </div>
+              <div class="flex items-center gap-2">
+                  <label class="text-xs text-gray-300 font-medium">Até:</label>
+                  <input type="date" name="data_fim" value="${dataFimStr}"
+                    class="bg-gray-900 text-white border-none rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-gray-400 outline-none color-scheme-dark">
+              </div>
+              <button type="submit" class="bg-gray-700 hover:bg-gray-600 text-white font-medium px-5 py-2 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto">
+                Filtrar Período
               </button>
             </form>
           </div>
@@ -1243,15 +1276,17 @@ app.get("/dashboard", async (req, res) => {
 
         <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
           
-          <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <h2 class="text-xl text-center text-gray-500 font-normal">Resumo do Período: <span class="font-bold text-gray-700">${dataInicioExibida}</span> a <span class="font-bold text-gray-700">${dataFimExibida}</span></h2>
+
+          <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
             <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
               <div class="p-5">
                 <div class="flex items-center">
-                  <div class="flex-shrink-0 bg-red-100 rounded-md p-3"><span class="text-xl">💸</span></div>
-                  <div class="ml-5 w-0 flex-1">
+                  <div class="flex-shrink-0 bg-gray-200 rounded-md p-3"><span class="text-xl">💸</span></div>
+                  <div class="ml-4 w-0 flex-1">
                     <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">Total Gasto (Ads)</dt>
-                      <dd class="flex items-baseline"><div class="text-2xl font-bold text-gray-900">R$ ${kpiGasto.toFixed(2)}</div></dd>
+                      <dt class="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Total Gasto (Ads)</dt>
+                      <dd class="mt-1"><div class="text-xl font-bold text-gray-900">${formatBRL(kpiGasto)}</div></dd>
                     </dl>
                   </div>
                 </div>
@@ -1261,11 +1296,11 @@ app.get("/dashboard", async (req, res) => {
             <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
               <div class="p-5">
                 <div class="flex items-center">
-                  <div class="flex-shrink-0 bg-blue-100 rounded-md p-3"><span class="text-xl">📝</span></div>
-                  <div class="ml-5 w-0 flex-1">
+                  <div class="flex-shrink-0 bg-gray-200 rounded-md p-3"><span class="text-xl">🚀</span></div>
+                  <div class="ml-4 w-0 flex-1">
                     <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">Total Cadastros</dt>
-                      <dd class="flex items-baseline"><div class="text-2xl font-bold text-gray-900">${kpiRegistros}</div></dd>
+                      <dt class="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Total Starts (Ads)</dt>
+                      <dd class="mt-1"><div class="text-xl font-bold text-gray-900">${kpiStarts}</div></dd>
                     </dl>
                   </div>
                 </div>
@@ -1275,11 +1310,11 @@ app.get("/dashboard", async (req, res) => {
             <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
               <div class="p-5">
                 <div class="flex items-center">
-                  <div class="flex-shrink-0 bg-emerald-100 rounded-md p-3"><span class="text-xl">💎</span></div>
-                  <div class="ml-5 w-0 flex-1">
+                  <div class="flex-shrink-0 bg-gray-200 rounded-md p-3"><span class="text-xl">📝</span></div>
+                  <div class="ml-4 w-0 flex-1">
                     <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">Total FTDs</dt>
-                      <dd class="flex items-baseline"><div class="text-2xl font-bold text-emerald-600">${kpiFtds}</div></dd>
+                      <dt class="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Total Cadastros (Ads)</dt>
+                      <dd class="mt-1"><div class="text-xl font-bold text-gray-900">${kpiRegistros}</div></dd>
                     </dl>
                   </div>
                 </div>
@@ -1289,11 +1324,25 @@ app.get("/dashboard", async (req, res) => {
             <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
               <div class="p-5">
                 <div class="flex items-center">
-                  <div class="flex-shrink-0 bg-indigo-100 rounded-md p-3"><span class="text-xl">🎯</span></div>
-                  <div class="ml-5 w-0 flex-1">
+                  <div class="flex-shrink-0 bg-gray-200 rounded-md p-3"><span class="text-xl">💎</span></div>
+                  <div class="ml-4 w-0 flex-1">
                     <dl>
-                      <dt class="text-sm font-medium text-gray-500 truncate">Custo por FTD Médio</dt>
-                      <dd class="flex items-baseline"><div class="text-2xl font-bold text-gray-900">R$ ${kpiCustoFtd}</div></dd>
+                      <dt class="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Total FTDs (Ads)</dt>
+                      <dd class="mt-1"><div class="text-xl font-bold text-emerald-600">${kpiFtds}</div></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0 bg-gray-200 rounded-md p-3"><span class="text-xl">🎯</span></div>
+                  <div class="ml-4 w-0 flex-1">
+                    <dl>
+                      <dt class="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Custo Médio FTD (Ads)</dt>
+                      <dd class="mt-1"><div class="text-xl font-bold text-gray-900">${formatBRL(kpiCustoFtdNum)}</div></dd>
                     </dl>
                   </div>
                 </div>
@@ -1304,26 +1353,26 @@ app.get("/dashboard", async (req, res) => {
           <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
             <div class="px-6 py-5 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
               <h3 class="text-lg leading-6 font-semibold text-gray-900 flex items-center gap-2">
-                📊 Performance por Funil
+                📊 Performance por Funil (Ads)
               </h3>
             </div>
             <div class="overflow-x-auto">
               ${adsPorFunil.length > 0 ? `
               <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
+                <thead class="bg-gray-50 whitespace-nowrap">
                   <tr>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Funil</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Gasto</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Impr.</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Cliques</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">CTR</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">CPM</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-indigo-500 uppercase tracking-wider bg-blue-50/50">Start</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-indigo-500 uppercase tracking-wider bg-blue-50/50">Reg</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Funil</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Gasto (R$)</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Impr.</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Cliques</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CTR (%)</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CPM (R$)</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider bg-blue-50/50">Start</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider bg-blue-50/50">Reg</th>
                     <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-emerald-600 uppercase tracking-wider bg-emerald-50/50">FTD</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">CPA Start</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">CPA Reg</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CPA FTD</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CPA Start</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CPA Reg</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CPA FTD (R$)</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-100">
@@ -1333,25 +1382,25 @@ app.get("/dashboard", async (req, res) => {
               ` : `
               <div class="text-center py-12">
                 <span class="text-4xl">📭</span>
-                <p class="mt-4 text-sm text-gray-500">Nenhuma métrica de tráfego importada para este dia.</p>
+                <p class="mt-4 text-sm text-gray-500">Nenhuma métrica de tráfego importada para este período.</p>
               </div>
               `}
             </div>
           </div>
 
-          <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
+          <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden opacity-90">
             <div class="px-6 py-5 border-b border-gray-200">
-              <h3 class="text-lg leading-6 font-semibold text-gray-900">📡 Log de Eventos Brutos (Servidor)</h3>
-              <p class="mt-1 max-w-2xl text-sm text-gray-500">Tudo que o servidor recebeu e processou hoje.</p>
+              <h3 class="text-lg leading-6 font-semibold text-gray-900">📡 Log Geral de Eventos</h3>
+              <p class="mt-1 max-w-2xl text-sm text-gray-500">Eventos orgânicos e tráfego cruzado processados pelo servidor.</p>
             </div>
             <div class="overflow-x-auto">
               ${totais.length > 0 ? `
               <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
+                <thead class="bg-gray-50 whitespace-nowrap">
                   <tr>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Plataforma</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Nome do Evento</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Quantidade</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Plataforma</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Nome do Evento</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Quantidade</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
