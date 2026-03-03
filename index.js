@@ -699,9 +699,9 @@ app.get("/esportivabet/postback", async (req, res) => {
 
     // Usando nomes padrão do Meta para otimizar mais rápido no Slot 3
     if (evType === "reg") {
-        metaEventName = "CompleteRegistration"; 
+        metaEventName = "Registro Esportiva"; 
     } else if (evType === "ftd" || evType === "qftd") {
-        metaEventName = "Purchase";
+        metaEventName = "Ftd Esportiva";
         isFtd = true;
     } else {
         console.log(`⚠️ [ESPORTIVABET] Evento ignorado: ${evType}`);
