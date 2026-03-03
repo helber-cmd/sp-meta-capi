@@ -1140,12 +1140,9 @@ app.get("/debug/ads", async (req, res) => {
 // =========================
 app.get("/dashboard", async (req, res) => {
   try {
-    // -> LOGICA DO SELETOR DE PERÍODOS (INTERFACE)
-    // Lê os parâmetros de data de início e fim da URL
     const dataInicioFiltro = req.query.data_inicio || null;
     const dataFimFiltro = req.query.data_fim || null;
 
-    // Função auxiliar para definir a exibição
     const displayDate = (dateFiltro) => {
         if (!dateFiltro) return new Date().toISOString().split("T")[0];
         return dateFiltro;
@@ -1153,36 +1150,27 @@ app.get("/dashboard", async (req, res) => {
     const dataInicioStr = displayDate(dataInicioFiltro);
     const dataFimStr = displayDate(dataFimFiltro);
 
-    // Formata as datas para exibição no H2 (de DD/MM/AAAA)
     const [anoI, mesI, diaI] = dataInicioStr.split("-");
     const dataInicioExibida = `${diaI}/${mesI}/${anoI}`;
     const [anoF, mesF, diaF] = dataFimStr.split("-");
     const dataFimExibida = `${diaF}/${mesF}/${anoF}`;
 
-    // -> CHAMADA DOS DADOS
-    // Passamos o período para a função de busca. 
-    // Por enquanto, o Prisma original processa apenas um dia específico (o início).
     const { totais, adsPorFunil, eventosPorFunil } = await buscarDadosDashboard(dataInicioFiltro, dataFimFiltro);
 
-    // Formatador nativo para moeda brasileira (ex: R$ 3.000,00)
     const formatBRL = (valor) => {
       const num = parseFloat(valor) || 0;
       return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     };
 
-    // --- CÁLCULO DOS KPIs GERAIS (SOMENTE PAINEL DE ADS - PEDIDO DO KAUE) ---
+    // --- CÁLCULO DOS KPIs GERAIS ---
     let kpiGasto = 0;
     let kpiStarts = 0;
     let kpiRegistros = 0;
     let kpiFtds = 0;
 
-    // O loop soma os dados de starts, registros, ftds e gastos apenas dos funis mapeados nos Ads
     adsPorFunil.forEach(a => { 
         kpiGasto += parseFloat(a.gasto || 0); 
-        
-        // Pega os eventos correspondentes a esse funil específico (ou zera se não tiver)
         const ev = eventosPorFunil[a.funil] || { start: 0, registro: 0, ftd: 0 };
-        
         kpiStarts += ev.start;
         kpiRegistros += ev.registro;
         kpiFtds += ev.ftd;
@@ -1190,7 +1178,7 @@ app.get("/dashboard", async (req, res) => {
 
     const kpiCustoFtdNum = kpiFtds > 0 ? (kpiGasto / kpiFtds) : 0;
 
-    // --- TABELA 1: EVENTOS BRUTOS (SERVIDOR) - BADGES GRAYSCALE ---
+    // --- TABELA 1: EVENTOS BRUTOS ---
     const linhasTabela = totais.map(item => `
       <tr class="hover:bg-gray-50 transition-colors">
         <td class="px-6 py-4 whitespace-nowrap">
@@ -1208,16 +1196,25 @@ app.get("/dashboard", async (req, res) => {
       </tr>
     `).join('');
 
-    // --- TABELA 2: MÉTRICAS DE ADS (PAINEL) - GRAYSCALE TEXT ---
-    const linhasAds = adsPorFunil.map(a => {
+    // --- TABELAS 2 E 3: ADS E TAXAS ---
+    let linhasAds = "";
+    let linhasTaxas = "";
+
+    adsPorFunil.forEach(a => {
       const ev = eventosPorFunil[a.funil] || { start: 0, registro: 0, ftd: 0 };
       const gasto = parseFloat(a.gasto);
       
       const cStartNum = ev.start > 0 ? (gasto / ev.start) : 0;
       const cRegNum = ev.registro > 0 ? (gasto / ev.registro) : 0;
       const cFtdNum = ev.ftd > 0 ? (gasto / ev.ftd) : 0;
+
+      // Cálculo das Taxas de Conversão
+      const txStartReg = ev.start > 0 ? ((ev.registro / ev.start) * 100).toFixed(2) : "0.00";
+      const txRegFtd = ev.registro > 0 ? ((ev.ftd / ev.registro) * 100).toFixed(2) : "0.00";
+      const txStartFtd = ev.start > 0 ? ((ev.ftd / ev.start) * 100).toFixed(2) : "0.00";
       
-      return `
+      // Linha da Tabela Principal (CPA / Volume)
+      linhasAds += `
         <tr class="hover:bg-gray-50 transition-colors border-b border-gray-100">
           <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 uppercase">🎯 ${a.funil}</td>
           <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${formatBRL(gasto)}</td>
@@ -1235,7 +1232,17 @@ app.get("/dashboard", async (req, res) => {
           <td class="px-4 py-4 whitespace-nowrap text-sm font-bold ${cFtdNum > 50 ? 'text-red-600' : 'text-emerald-600'}">${ev.ftd > 0 ? formatBRL(cFtdNum) : '-'}</td>
         </tr>
       `;
-    }).join('');
+
+      // Linha da Tabela Secundária (Taxas) - Design super limpo
+      linhasTaxas += `
+        <tr class="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+          <td class="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-700 uppercase">${a.funil}</td>
+          <td class="px-4 py-2 whitespace-nowrap text-xs text-gray-600">${txStartReg}%</td>
+          <td class="px-4 py-2 whitespace-nowrap text-xs text-gray-600">${txRegFtd}%</td>
+          <td class="px-4 py-2 whitespace-nowrap text-xs font-semibold text-gray-800">${txStartFtd}%</td>
+        </tr>
+      `;
+    });
 
     // --- HTML FINAL ---
     const html = `
@@ -1249,19 +1256,20 @@ app.get("/dashboard", async (req, res) => {
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
           body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; color: #111; }
-          /* Scrollbar customizada para tabelas */
           ::-webkit-scrollbar { height: 8px; width: 8px; }
           ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
           ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
           ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+          /* Oculta o marcador padrão do details no Safari/Chrome */
+          details > summary { list-style: none; }
+          details > summary::-webkit-details-marker { display: none; }
         </style>
       </head>
-      <body class="antialiased">
+      <body class="antialiased flex flex-col min-h-screen">
         
         <header class="bg-black text-white shadow-lg">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row justify-between items-center">
             <div class="flex items-center gap-3">
-              <span class="text-3xl"></span>
               <h1 class="text-2xl font-bold tracking-tight"><span class="font-extrabold text-3xl">3C Sports</span> <span class="text-gray-400 font-light hidden sm:inline">| Projeto Pilhado - Tráfego.</span></h1>
             </div>
             
@@ -1283,7 +1291,7 @@ app.get("/dashboard", async (req, res) => {
           </div>
         </header>
 
-        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 flex-grow">
           
           <h2 class="text-xl text-center text-gray-500 font-normal">Resumo do Período: <span class="font-bold text-gray-700">${dataInicioExibida}</span> a <span class="font-bold text-gray-700">${dataFimExibida}</span></h2>
 
@@ -1301,7 +1309,6 @@ app.get("/dashboard", async (req, res) => {
                 </div>
               </div>
             </div>
-
             <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
               <div class="p-5">
                 <div class="flex items-center">
@@ -1315,7 +1322,6 @@ app.get("/dashboard", async (req, res) => {
                 </div>
               </div>
             </div>
-
             <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
               <div class="p-5">
                 <div class="flex items-center">
@@ -1329,7 +1335,6 @@ app.get("/dashboard", async (req, res) => {
                 </div>
               </div>
             </div>
-
             <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
               <div class="p-5">
                 <div class="flex items-center">
@@ -1343,7 +1348,6 @@ app.get("/dashboard", async (req, res) => {
                 </div>
               </div>
             </div>
-
             <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
               <div class="p-5">
                 <div class="flex items-center">
@@ -1360,71 +1364,96 @@ app.get("/dashboard", async (req, res) => {
           </div>
 
           <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
-            <div class="px-6 py-5 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-              <h3 class="text-lg leading-6 font-semibold text-gray-900 flex items-center gap-2">
-                📊 Performance por Funil (Ads)
-              </h3>
+            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+              <h3 class="text-lg font-semibold text-gray-900">📊 Performance por Funil</h3>
             </div>
             <div class="overflow-x-auto">
               ${adsPorFunil.length > 0 ? `
               <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50 whitespace-nowrap">
                   <tr>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Funil</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Gasto (R$)</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Impr.</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Cliques</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CTR (%)</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CPM (R$)</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider bg-blue-50/50">Start</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider bg-blue-50/50">Reg</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-emerald-600 uppercase tracking-wider bg-emerald-50/50">FTD</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CPA Start</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CPA Reg</th>
-                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CPA FTD (R$)</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase">Funil</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase">Gasto</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase">Impr.</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase">Cliques</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase">CTR (%)</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase">CPM</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase bg-blue-50/50">Start</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase bg-blue-50/50">Reg</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-emerald-600 uppercase bg-emerald-50/50">FTD</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase">CPA Start</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase">CPA Reg</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase">CPA FTD</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-100">
                   ${linhasAds}
                 </tbody>
               </table>
-              ` : `
-              <div class="text-center py-12">
-                <span class="text-4xl">📭</span>
-                <p class="mt-4 text-sm text-gray-500">Nenhuma métrica de tráfego importada para este período.</p>
-              </div>
-              `}
+              ` : `<div class="text-center py-12"><p class="text-sm text-gray-500">Nenhuma métrica de tráfego importada.</p></div>`}
             </div>
           </div>
 
-          <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden opacity-90">
-            <div class="px-6 py-5 border-b border-gray-200">
-              <h3 class="text-lg leading-6 font-semibold text-gray-900">📡 Log Geral de Eventos</h3>
-              <p class="mt-1 max-w-2xl text-sm text-gray-500">Eventos orgânicos e tráfego cruzado processados pelo servidor.</p>
+          ${adsPorFunil.length > 0 ? `
+          <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden max-w-3xl">
+            <div class="px-6 py-3 border-b border-gray-200 bg-gray-50">
+              <h3 class="text-sm font-semibold text-gray-700">📉 Taxas de Conversão do Funil</h3>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50 whitespace-nowrap">
+                  <tr>
+                    <th class="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Funil</th>
+                    <th class="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Entrada > Registro</th>
+                    <th class="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Registro > FTD</th>
+                    <th class="px-4 py-2 text-left text-xs font-bold text-gray-500 uppercase">Entrada > FTD</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-50">
+                  ${linhasTaxas}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          ` : ''}
+
+          <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden opacity-90 mt-8">
+            <div class="px-6 py-4 border-b border-gray-200">
+              <h3 class="text-lg font-semibold text-gray-900">📡 Log Geral de Eventos</h3>
             </div>
             <div class="overflow-x-auto">
               ${totais.length > 0 ? `
               <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50 whitespace-nowrap">
                   <tr>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Plataforma</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Nome do Evento</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">Quantidade</th>
+                    <th class="px-6 py-3 text-left text-xs font-bold text-gray-900 uppercase">Plataforma</th>
+                    <th class="px-6 py-3 text-left text-xs font-bold text-gray-900 uppercase">Nome do Evento</th>
+                    <th class="px-6 py-3 text-left text-xs font-bold text-gray-900 uppercase">Quantidade</th>
                   </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                   ${linhasTabela}
                 </tbody>
               </table>
-              ` : `
-              <div class="text-center py-12">
-                <p class="text-sm text-gray-500">Nenhum evento registrado no servidor ainda.</p>
-              </div>
-              `}
+              ` : `<div class="text-center py-12"><p class="text-sm text-gray-500">Nenhum evento registrado.</p></div>`}
             </div>
           </div>
 
         </main>
+
+        <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
+          <details class="text-xs text-gray-300 cursor-pointer opacity-30 hover:opacity-100 transition-opacity select-none inline-block">
+            <summary class="outline-none">_observações</summary>
+            <div class="mt-2 p-4 bg-gray-50 border border-gray-200 rounded text-gray-600 shadow-sm w-full sm:w-96 cursor-text select-text">
+              <ul class="list-disc pl-4 space-y-1">
+                <li>Evento X começou a marcar perfeitamente no dia 01/03.</li>
+                <li>Link do funil f03 ajustado para passar S2 na Novibet.</li>
+                <li>Superbet isolado no Slot 5 do Meta.</li>
+              </ul>
+            </div>
+          </details>
+        </footer>
+
       </body>
       </html>
     `;
@@ -1432,7 +1461,7 @@ app.get("/dashboard", async (req, res) => {
     res.send(html);
 
   } catch (e) {
-    res.status(500).send(`<div style="font-family: sans-serif; padding: 40px; text-align: center; color: red;"><h1>Erro no Dashboard</h1><p>${e.message}</p></div>`);
+    res.status(500).send(`<div style="padding: 40px; text-align: center; color: red;"><h1>Erro no Dashboard</h1><p>${e.message}</p></div>`);
   }
 });
 
