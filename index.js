@@ -144,24 +144,23 @@ async function relatorioGeral() {
     return "Erro ao gerar o resumo diário.";
   }
 }
-async function buscarDadosDashboard(dataFiltro = null) {
-  // Usa a data passada ou hoje, sempre em UTC-3 (Brasília)
+// =====================================================================
+// BUSCAR DADOS DO DASHBOARD (SUPORTE A PERÍODOS E CÁLCULO REAL)
+// =====================================================================
+async function buscarDadosDashboard(dataInicioFiltro = null, dataFimFiltro = null) {
+  // 1. Configuração de Datas e Fuso Horário (Brasília)
   const agora = new Date();
-  const offsetBrasilia = -3 * 60; // -3h em minutos
+  const offsetBrasilia = -3 * 60;
   const agoraBrasilia = new Date(agora.getTime() + (offsetBrasilia - agora.getTimezoneOffset()) * 60000);
+  const hojeStr = agoraBrasilia.toISOString().split("T")[0];
 
-  let diaInicio, diaFim;
+  const inicioStr = dataInicioFiltro || hojeStr;
+  const fimStr = dataFimFiltro || hojeStr;
 
-  if (dataFiltro) {
-    // dataFiltro vem como "2026-02-25" (string do input date)
-    diaInicio = new Date(`${dataFiltro}T00:00:00-03:00`);
-    diaFim    = new Date(`${dataFiltro}T23:59:59-03:00`);
-  } else {
-    const hojeStr = agoraBrasilia.toISOString().split("T")[0];
-    diaInicio = new Date(`${hojeStr}T00:00:00-03:00`);
-    diaFim    = new Date(`${hojeStr}T23:59:59-03:00`);
-  }
+  const diaInicio = new Date(`${inicioStr}T00:00:00-03:00`);
+  const diaFim    = new Date(`${fimStr}T23:59:59-03:00`);
 
+  // 2. Tabela 1: Resumo Geral de Eventos
   const stats = await prisma.eventLog.groupBy({
     by: ['provider', 'type', 'extra'],
     where: { createdAt: { gte: diaInicio, lte: diaFim } },
@@ -176,39 +175,49 @@ async function buscarDadosDashboard(dataFiltro = null) {
     contagem: s._count.type
   }));
 
-  const hojeStr = agoraBrasilia.toISOString().split("T")[0];
-  const dataExibida = dataFiltro || hojeStr;
+  // 3. Array de dias para o formato texto do Meta Ads ("DD/MM/YYYY")
+  const daysArray = [];
+  let currentDay = new Date(diaInicio);
+  while (currentDay <= diaFim) {
+    const dd = String(currentDay.getDate()).padStart(2, '0');
+    const mm = String(currentDay.getMonth() + 1).padStart(2, '0');
+    const yyyy = currentDay.getFullYear();
+    daysArray.push(`${dd}/${mm}/${yyyy}`);
+    currentDay.setDate(currentDay.getDate() + 1);
+  }
 
-  // Busca métricas de ads agrupadas por funil
-  // Converte "2026-02-27" -> "27/02/2026" para bater com o formato do N8N
-const [ano, mes, dia] = dataExibida.split("-");
-const dayFormatado = `${dia}/${mes}/${ano}`;
-
-const adStats = await prisma.adMetrics.groupBy({
+  // 4. Métricas de Ads (Agora soma tudo e calcula médias reais)
+  const adStats = await prisma.adMetrics.groupBy({
     by: ['funil'],
-    where: { day: dayFormatado },
+    where: { day: { in: daysArray } },
     _sum: {
       amountSpent: true,
       impressions: true,
       linkClicks: true,
     },
-    _avg: {
-      ctr: true,
-      cpm: true,
-    },
     orderBy: { funil: 'asc' }
   });
 
-  const adsPorFunil = adStats.map(s => ({
-    funil: s.funil || "sem funil",
-    gasto: s._sum.amountSpent?.toFixed(2) || "0.00",
-    impressoes: s._sum.impressions || 0,
-    cliques: s._sum.linkClicks || 0,
-    ctr: s._avg.ctr?.toFixed(2) || "0.00",
-    cpm: s._avg.cpm?.toFixed(2) || "0.00",
-  }));
+  const adsPorFunil = adStats.map(s => {
+    const gasto = s._sum.amountSpent || 0;
+    const imps = s._sum.impressions || 0;
+    const clicks = s._sum.linkClicks || 0;
+    
+    // Cálculo estatístico real
+    const ctr = imps > 0 ? ((clicks / imps) * 100).toFixed(2) : "0.00";
+    const cpm = imps > 0 ? ((gasto / imps) * 1000).toFixed(2) : "0.00";
 
-// Busca eventos por funil do EventLog
+    return {
+      funil: s.funil || "sem funil",
+      gasto: gasto.toFixed(2),
+      impressoes: imps,
+      cliques: clicks,
+      ctr: ctr,
+      cpm: cpm,
+    };
+  });
+
+  // 5. Cruzamento de Funil (SendPulse e Novibet)
   const eventosNovibet = await prisma.eventLog.groupBy({
     by: ['type', 'extra'],
     where: {
@@ -246,7 +255,7 @@ const adStats = await prisma.adMetrics.groupBy({
     if (e.type === 'ftd' || e.type === 'deposito') eventosPorFunil[funil].ftd += e._count.type;
   }
 
-  return { hoje: dataExibida, totais, hojeStr, adsPorFunil, eventosPorFunil };
+  return { totais, adsPorFunil, eventosPorFunil };
 }
 
 // Roda o relatório sozinho a cada 1 hora (para não sujar o log)
