@@ -1127,131 +1127,246 @@ app.get("/debug/ads", async (req, res) => {
   res.json(registros);
 });
 // =========================
-// DASHBOARD DE MÉTRICAS DO DIA
+// DASHBOARD DE MÉTRICAS DO DIA (VISUAL PREMIUM)
 // =========================
 app.get("/dashboard", async (req, res) => {
   try {
     const dataFiltro = req.query.data || null;
-const { hoje, totais, hojeStr, adsPorFunil, eventosPorFunil } = await buscarDadosDashboard(dataFiltro);
-  
-    // Monta as linhas da tabela HTML
-       const linhasTabela = totais.map(item => `
-      <tr>
-        <td>${item.provider === 'sendpulse' ? '📱' : '🎰'} ${item.provider.toUpperCase()}</td>
-        <td>${item.evento} ${item.subOrigem ? `  
-<small style="color: #3498db;"><b>Funil:</b> ${item.subOrigem}</small>` : ''}</td>
-        <td>${item.contagem}</td>
-      </tr>
-    `).join('');
+    const { hoje, totais, hojeStr, adsPorFunil, eventosPorFunil } = await buscarDadosDashboard(dataFiltro);
 
-    // Monta a página HTML completa
+    // --- CÁLCULO DOS KPIs GERAIS (NOVIDADE) ---
+    let kpiGasto = 0;
+    let kpiRegistros = 0;
+    let kpiFtds = 0;
+
+    adsPorFunil.forEach(a => { kpiGasto += parseFloat(a.gasto || 0); });
+    
+    // Conta FTDs e Registros apenas dos funis mapeados nos Ads para o KPI
+    Object.values(eventosPorFunil).forEach(ev => {
+        kpiRegistros += (ev.registro || 0);
+        kpiFtds += (ev.ftd || 0);
+    });
+
+    const kpiCustoFtd = kpiFtds > 0 ? (kpiGasto / kpiFtds).toFixed(2) : "0.00";
+
+    // --- TABELA 1: EVENTOS BRUTOS ---
+    const linhasTabela = totais.map(item => {
+      // Cores dinâmicas para os provedores
+      let badgeColor = "bg-gray-100 text-gray-800";
+      if (item.provider === 'sendpulse') badgeColor = "bg-blue-100 text-blue-800";
+      if (item.provider === 'novibet') badgeColor = "bg-emerald-100 text-emerald-800";
+      if (item.provider === 'esportivabet') badgeColor = "bg-orange-100 text-orange-800";
+      if (item.provider === 'superbet') badgeColor = "bg-red-100 text-red-800";
+
+      return `
+      <tr class="hover:bg-gray-50 transition-colors">
+        <td class="px-6 py-4 whitespace-nowrap">
+          <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${badgeColor}">
+            ${item.provider === 'sendpulse' ? '📱' : '🎰'} ${item.provider.toUpperCase()}
+          </span>
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+          ${item.evento} 
+          ${item.subOrigem ? `<span class="ml-2 px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-500 border border-gray-200">🎯 ${item.subOrigem}</span>` : ''}
+        </td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
+          ${item.contagem}
+        </td>
+      </tr>
+    `}).join('');
+
+    // --- TABELA 2: MÉTRICAS DE ADS ---
+    const linhasAds = adsPorFunil.map(a => {
+      const ev = eventosPorFunil[a.funil] || { start: 0, registro: 0, ftd: 0 };
+      const gasto = parseFloat(a.gasto);
+      const cStart = ev.start > 0 ? (gasto / ev.start).toFixed(2) : '-';
+      const cReg = ev.registro > 0 ? (gasto / ev.registro).toFixed(2) : '-';
+      const cFtd = ev.ftd > 0 ? (gasto / ev.ftd).toFixed(2) : '-';
+      
+      return `
+        <tr class="hover:bg-gray-50 transition-colors border-b border-gray-100">
+          <td class="px-4 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 uppercase">🎯 ${a.funil}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">R$ ${a.gasto}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${a.impressoes.toLocaleString('pt-BR')}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${a.cliques.toLocaleString('pt-BR')}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${a.ctr}%</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">R$ ${a.cpm}</td>
+          
+          <td class="px-4 py-4 whitespace-nowrap text-sm font-semibold text-gray-800 bg-blue-50/30">${ev.start}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm font-semibold text-gray-800 bg-blue-50/30">${ev.registro}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm font-bold text-emerald-600 bg-emerald-50/30">${ev.ftd}</td>
+          
+          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">R$ ${cStart}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">R$ ${cReg}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm font-bold ${cFtd !== '-' && cFtd > 50 ? 'text-red-600' : 'text-emerald-600'}">R$ ${cFtd}</td>
+        </tr>
+      `;
+    }).join('');
+
+    // --- HTML FINAL ---
     const html = `
       <!DOCTYPE html>
       <html lang="pt-BR">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Dashboard de Eventos</title>
+        <title>Dashboard | Tracker</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
         <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
-          .container { max-width: 800px; margin: 20px auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
-          h1 { text-align: center; padding: 20px; background-color: #2c3e50; color: #fff; margin: 0; }
-          h2 { text-align: center; color: #7f8c8d; font-weight: normal; }
-          table { width: 100%; border-collapse: collapse; }
-.ads-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.ads-table-wrap table { min-width: 900px; }
-          th, td { padding: 15px; text-align: left; border-bottom: 1px solid #ddd; }
-          th { background-color: #ecf0f1; font-weight: bold; }
-          tr:hover { background-color: #f9f9f9; }
-          .no-data { text-align: center; padding: 40px; color: #95a5a6; }
+          body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+          /* Scrollbar customizada para tabelas */
+          ::-webkit-scrollbar { height: 8px; width: 8px; }
+          ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+          ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+          ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
         </style>
       </head>
-      <body>
-        <div class="container">
-          <h1>Dashboard de Eventos</h1>
-          <h2>Resumo do Dia: ${hoje}</h2>
-<div style="text-align:center; padding: 10px 0 20px;">
-  <form method="GET" action="/dashboard">
-    <input 
-      type="date" 
-      name="data" 
-      value="${hoje}"
-      max="${hojeStr}"
-      style="padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;"
-    />
-    <button 
-      type="submit"
-      style="padding: 8px 16px; margin-left: 8px; background: #2c3e50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px;"
-    >
-      Ver dia
-    </button>
-  </form>
-</div>
-          ${totais.length > 0 ? `
-            <table>
-              <thead>
-                <tr>
-                  <th>Fonte</th>
-                  <th>Evento</th>
-                  <th>Contagem</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${linhasTabela}
-              </tbody>
-            </table>
-          ` : `<p class="no-data">Nenhum evento registrado hoje ainda.</p>`}
-          <div style="margin-top: 40px;">
-  <h2 style="text-align:center; color: #2c3e50;">📊 Métricas de Ads por Funil</h2>
-  ${adsPorFunil.length > 0 ? `
-    <div class="ads-table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Funil</th>
-          <th>Gasto (R$)</th>
-          <th>Impressões</th>
-          <th>Cliques</th>
-          <th>CTR (%)</th>
-          <th>CPM (R$)</th>
-          <th>Start</th>
-          <th>Registro</th>
-          <th>FTD/Dep</th>
-          <th>R$/Start</th>
-          <th>R$/Reg</th>
-          <th>R$/FTD</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${adsPorFunil.map(a => {
-          const ev = eventosPorFunil[a.funil] || { start: 0, registro: 0, ftd: 0 };
-          const gasto = parseFloat(a.gasto);
-          const cStart = ev.start > 0 ? (gasto / ev.start).toFixed(2) : '-';
-          const cReg = ev.registro > 0 ? (gasto / ev.registro).toFixed(2) : '-';
-          const cFtd = ev.ftd > 0 ? (gasto / ev.ftd).toFixed(2) : '-';
-          return `
-            <tr>
-              <td>🎯 ${a.funil.toUpperCase()}</td>
-              <td>R$ ${a.gasto}</td>
-              <td>${a.impressoes.toLocaleString('pt-BR')}</td>
-              <td>${a.cliques.toLocaleString('pt-BR')}</td>
-              <td>${a.ctr}%</td>
-              <td>R$ ${a.cpm}</td>
-              <td>${ev.start}</td>
-              <td>${ev.registro}</td>
-              <td>${ev.ftd}</td>
-              <td>${cStart === '-' ? '-' : 'R$ ' + cStart}</td>
-              <td>${cReg === '-' ? '-' : 'R$ ' + cReg}</td>
-              <td>${cFtd === '-' ? '-' : 'R$ ' + cFtd}</td>
-            </tr>
-          `;
-        }).join('')}
-      </tbody>
-    </table>
-    </div>
-  ` : `<p class="no-data">Nenhuma métrica de ads para este dia.</p>`}
-</div> 
-        </div>
+      <body class="text-gray-800 antialiased">
+        
+        <header class="bg-indigo-900 text-white shadow-lg">
+          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row justify-between items-center">
+            <div class="flex items-center gap-3">
+              <span class="text-3xl">🎯</span>
+              <h1 class="text-2xl font-bold tracking-tight">CAPI Tracker <span class="text-indigo-300 font-light hidden sm:inline">| Performance Analytics</span></h1>
+            </div>
+            
+            <form method="GET" action="/dashboard" class="mt-4 sm:mt-0 flex items-center gap-2 bg-indigo-800 p-1.5 rounded-lg border border-indigo-700">
+              <input type="date" name="data" value="${hoje}" max="${hojeStr}" 
+                class="bg-indigo-900 text-white border-none rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 outline-none color-scheme-dark">
+              <button type="submit" class="bg-indigo-500 hover:bg-indigo-400 text-white font-medium px-4 py-1.5 rounded-md text-sm transition-colors shadow-sm">
+                Filtrar
+              </button>
+            </form>
+          </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+          
+          <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0 bg-red-100 rounded-md p-3"><span class="text-xl">💸</span></div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Total Gasto (Ads)</dt>
+                      <dd class="flex items-baseline"><div class="text-2xl font-bold text-gray-900">R$ ${kpiGasto.toFixed(2)}</div></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0 bg-blue-100 rounded-md p-3"><span class="text-xl">📝</span></div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Total Cadastros</dt>
+                      <dd class="flex items-baseline"><div class="text-2xl font-bold text-gray-900">${kpiRegistros}</div></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0 bg-emerald-100 rounded-md p-3"><span class="text-xl">💎</span></div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Total FTDs</dt>
+                      <dd class="flex items-baseline"><div class="text-2xl font-bold text-emerald-600">${kpiFtds}</div></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
+              <div class="p-5">
+                <div class="flex items-center">
+                  <div class="flex-shrink-0 bg-indigo-100 rounded-md p-3"><span class="text-xl">🎯</span></div>
+                  <div class="ml-5 w-0 flex-1">
+                    <dl>
+                      <dt class="text-sm font-medium text-gray-500 truncate">Custo por FTD Médio</dt>
+                      <dd class="flex items-baseline"><div class="text-2xl font-bold text-gray-900">R$ ${kpiCustoFtd}</div></dd>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
+            <div class="px-6 py-5 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+              <h3 class="text-lg leading-6 font-semibold text-gray-900 flex items-center gap-2">
+                📊 Performance por Funil
+              </h3>
+            </div>
+            <div class="overflow-x-auto">
+              ${adsPorFunil.length > 0 ? `
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Funil</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Gasto</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Impr.</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Cliques</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">CTR</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">CPM</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-indigo-500 uppercase tracking-wider bg-blue-50/50">Start</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-indigo-500 uppercase tracking-wider bg-blue-50/50">Reg</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-emerald-600 uppercase tracking-wider bg-emerald-50/50">FTD</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">CPA Start</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">CPA Reg</th>
+                    <th scope="col" class="px-4 py-3 text-left text-xs font-bold text-gray-900 uppercase tracking-wider">CPA FTD</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-100">
+                  ${linhasAds}
+                </tbody>
+              </table>
+              ` : `
+              <div class="text-center py-12">
+                <span class="text-4xl">📭</span>
+                <p class="mt-4 text-sm text-gray-500">Nenhuma métrica de tráfego importada para este dia.</p>
+              </div>
+              `}
+            </div>
+          </div>
+
+          <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
+            <div class="px-6 py-5 border-b border-gray-200">
+              <h3 class="text-lg leading-6 font-semibold text-gray-900">📡 Log de Eventos Brutos (Servidor)</h3>
+              <p class="mt-1 max-w-2xl text-sm text-gray-500">Tudo que o servidor recebeu e processou hoje.</p>
+            </div>
+            <div class="overflow-x-auto">
+              ${totais.length > 0 ? `
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Plataforma</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Nome do Evento</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Quantidade</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  ${linhasTabela}
+                </tbody>
+              </table>
+              ` : `
+              <div class="text-center py-12">
+                <p class="text-sm text-gray-500">Nenhum evento registrado no servidor ainda.</p>
+              </div>
+              `}
+            </div>
+          </div>
+
+        </main>
       </body>
       </html>
     `;
@@ -1259,7 +1374,7 @@ const { hoje, totais, hojeStr, adsPorFunil, eventosPorFunil } = await buscarDado
     res.send(html);
 
   } catch (e) {
-    res.status(500).send(`<h1>Erro inesperado ao construir a página</h1><p>${e.message}</p>`);
+    res.status(500).send(`<div style="font-family: sans-serif; padding: 40px; text-align: center; color: red;"><h1>Erro no Dashboard</h1><p>${e.message}</p></div>`);
   }
 });
 
