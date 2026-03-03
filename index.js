@@ -1180,7 +1180,7 @@ app.get("/dashboard", async (req, res) => {
 
     // --- TABELA 1: EVENTOS BRUTOS ---
     const linhasTabela = totais.map(item => `
-      <tr class="hover:bg-gray-50 transition-colors">
+      <tr class="hover:bg-gray-50 transition-colors border-b border-gray-100">
         <td class="px-6 py-4 whitespace-nowrap">
           <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
             ${item.provider === 'sendpulse' ? '📱' : '🎰'} ${item.provider.toUpperCase()}
@@ -1208,15 +1208,13 @@ app.get("/dashboard", async (req, res) => {
       const cRegNum = ev.registro > 0 ? (gasto / ev.registro) : 0;
       const cFtdNum = ev.ftd > 0 ? (gasto / ev.ftd) : 0;
 
-      // Cálculo das Taxas de Conversão
       const txStartReg = ev.start > 0 ? ((ev.registro / ev.start) * 100).toFixed(2) : "0.00";
       const txRegFtd = ev.registro > 0 ? ((ev.ftd / ev.registro) * 100).toFixed(2) : "0.00";
       const txStartFtd = ev.start > 0 ? ((ev.ftd / ev.start) * 100).toFixed(2) : "0.00";
       
-      // Linha da Tabela Principal (CPA / Volume)
       linhasAds += `
         <tr class="hover:bg-gray-50 transition-colors border-b border-gray-100">
-          <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900 uppercase">🎯 ${a.funil}</td>
+          <td class="px-4 py-4 whitespace-nowrap text-sm font-bold text-gray-900 uppercase">🎯 ${a.funil}</td>
           <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-800">${formatBRL(gasto)}</td>
           <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${a.impressoes.toLocaleString('pt-BR')}</td>
           <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-600">${a.cliques.toLocaleString('pt-BR')}</td>
@@ -1233,13 +1231,12 @@ app.get("/dashboard", async (req, res) => {
         </tr>
       `;
 
-      // Linha da Tabela Secundária (Taxas) - Design super limpo
       linhasTaxas += `
         <tr class="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-          <td class="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-700 uppercase">${a.funil}</td>
-          <td class="px-4 py-2 whitespace-nowrap text-xs text-gray-600">${txStartReg}%</td>
-          <td class="px-4 py-2 whitespace-nowrap text-xs text-gray-600">${txRegFtd}%</td>
-          <td class="px-4 py-2 whitespace-nowrap text-xs font-semibold text-gray-800">${txStartFtd}%</td>
+          <td class="px-4 py-2 whitespace-nowrap text-xs font-bold text-gray-800 uppercase">${a.funil}</td>
+          <td class="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-600">${txStartReg}%</td>
+          <td class="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-600">${txRegFtd}%</td>
+          <td class="px-4 py-2 whitespace-nowrap text-xs font-bold text-indigo-600">${txStartFtd}%</td>
         </tr>
       `;
     });
@@ -1253,119 +1250,101 @@ app.get("/dashboard", async (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>3C Sports | Analytics</title>
         <script src="https://cdn.tailwindcss.com"></script>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@800;900&display=swap" rel="stylesheet">
         <style>
-          body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; color: #111; }
+          body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; color: #111; }
+          .font-logo { font-family: 'Montserrat', sans-serif; letter-spacing: -0.05em; }
           ::-webkit-scrollbar { height: 8px; width: 8px; }
           ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
           ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
           ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
-          /* Oculta o marcador padrão do details no Safari/Chrome */
+          /* Setup do acordeão das observações */
           details > summary { list-style: none; }
           details > summary::-webkit-details-marker { display: none; }
         </style>
       </head>
       <body class="antialiased flex flex-col min-h-screen">
         
-        <header class="bg-black text-white shadow-lg">
+        <header class="bg-[#0a0a0a] text-white shadow-lg border-b border-gray-800">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row justify-between items-center">
-            <div class="flex items-center gap-3">
-              <h1 class="text-2xl font-bold tracking-tight"><span class="font-extrabold text-3xl">3C Sports</span> <span class="text-gray-400 font-light hidden sm:inline">| Projeto Pilhado - Tráfego.</span></h1>
+            
+            <div class="flex items-center gap-2">
+              <h1 class="flex items-center">
+                <span class="font-logo font-black text-4xl tracking-tighter text-white">3C</span>
+                <span class="font-logo font-extrabold text-2xl ml-1 text-white">Sports</span>
+                <span class="text-gray-400 font-light hidden md:inline text-lg ml-3 border-l border-gray-700 pl-3">Projeto Pilhado - Tráfego.</span>
+              </h1>
             </div>
             
-            <form method="GET" action="/dashboard" class="mt-4 sm:mt-0 flex flex-col sm:flex-row items-center gap-3 bg-gray-800 p-2 rounded-lg border border-gray-700">
+            <form method="GET" action="/dashboard" class="mt-4 sm:mt-0 flex flex-col sm:flex-row items-center gap-3 bg-gray-900 p-2 rounded-lg border border-gray-700">
               <div class="flex items-center gap-2">
-                  <label class="text-xs text-gray-300 font-medium">De:</label>
+                  <label class="text-xs text-gray-400 font-medium">De:</label>
                   <input type="date" name="data_inicio" value="${dataInicioStr}"
-                    class="bg-gray-900 text-white border-none rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-gray-400 outline-none color-scheme-dark">
+                    class="bg-black text-white border border-gray-700 rounded-md px-3 py-1.5 text-sm focus:ring-1 focus:ring-gray-400 outline-none color-scheme-dark">
               </div>
               <div class="flex items-center gap-2">
-                  <label class="text-xs text-gray-300 font-medium">Até:</label>
+                  <label class="text-xs text-gray-400 font-medium">Até:</label>
                   <input type="date" name="data_fim" value="${dataFimStr}"
-                    class="bg-gray-900 text-white border-none rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-gray-400 outline-none color-scheme-dark">
+                    class="bg-black text-white border border-gray-700 rounded-md px-3 py-1.5 text-sm focus:ring-1 focus:ring-gray-400 outline-none color-scheme-dark">
               </div>
-              <button type="submit" class="bg-gray-700 hover:bg-gray-600 text-white font-medium px-5 py-2 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto">
-                Filtrar Período
+              <button type="submit" class="bg-gray-100 hover:bg-white text-black font-bold px-5 py-2 rounded-md text-sm transition-colors shadow-sm w-full sm:w-auto">
+                Filtrar
               </button>
             </form>
           </div>
         </header>
 
-        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 flex-grow">
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 flex-grow">
           
-          <h2 class="text-xl text-center text-gray-500 font-normal">Resumo do Período: <span class="font-bold text-gray-700">${dataInicioExibida}</span> a <span class="font-bold text-gray-700">${dataFimExibida}</span></h2>
+          <h2 class="text-lg text-center text-gray-500 font-medium">Resumo do Período: <span class="font-bold text-gray-800">${dataInicioExibida}</span> a <span class="font-bold text-gray-800">${dataFimExibida}</span></h2>
 
-          <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
-            <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0 bg-gray-200 rounded-md p-3"><span class="text-xl">💸</span></div>
-                  <div class="ml-4 w-0 flex-1">
-                    <dl>
-                      <dt class="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Total Gasto (Ads)</dt>
-                      <dd class="mt-1"><div class="text-xl font-bold text-gray-900">${formatBRL(kpiGasto)}</div></dd>
-                    </dl>
-                  </div>
-                </div>
+          <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-4">
+              <div class="bg-gray-100 p-2.5 rounded-lg"><span class="text-lg">💸</span></div>
+              <div class="min-w-0">
+                <p class="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide">Total Gasto (Ads)</p>
+                <p class="text-lg md:text-xl font-bold text-gray-900 mt-0.5">${formatBRL(kpiGasto)}</p>
               </div>
             </div>
-            <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0 bg-gray-200 rounded-md p-3"><span class="text-xl">🚀</span></div>
-                  <div class="ml-4 w-0 flex-1">
-                    <dl>
-                      <dt class="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Total Starts (Ads)</dt>
-                      <dd class="mt-1"><div class="text-xl font-bold text-gray-900">${kpiStarts}</div></dd>
-                    </dl>
-                  </div>
-                </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-4">
+              <div class="bg-gray-100 p-2.5 rounded-lg"><span class="text-lg">🚀</span></div>
+              <div class="min-w-0">
+                <p class="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide">Total Starts</p>
+                <p class="text-lg md:text-xl font-bold text-gray-900 mt-0.5">${kpiStarts}</p>
               </div>
             </div>
-            <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0 bg-gray-200 rounded-md p-3"><span class="text-xl">📝</span></div>
-                  <div class="ml-4 w-0 flex-1">
-                    <dl>
-                      <dt class="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Total Cadastros (Ads)</dt>
-                      <dd class="mt-1"><div class="text-xl font-bold text-gray-900">${kpiRegistros}</div></dd>
-                    </dl>
-                  </div>
-                </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-4">
+              <div class="bg-gray-100 p-2.5 rounded-lg"><span class="text-lg">📝</span></div>
+              <div class="min-w-0">
+                <p class="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide">Total Cadastros</p>
+                <p class="text-lg md:text-xl font-bold text-gray-900 mt-0.5">${kpiRegistros}</p>
               </div>
             </div>
-            <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0 bg-gray-200 rounded-md p-3"><span class="text-xl">💎</span></div>
-                  <div class="ml-4 w-0 flex-1">
-                    <dl>
-                      <dt class="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Total FTDs (Ads)</dt>
-                      <dd class="mt-1"><div class="text-xl font-bold text-emerald-600">${kpiFtds}</div></dd>
-                    </dl>
-                  </div>
-                </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-4">
+              <div class="bg-gray-100 p-2.5 rounded-lg"><span class="text-lg">💎</span></div>
+              <div class="min-w-0">
+                <p class="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide">Total FTDs</p>
+                <p class="text-lg md:text-xl font-bold text-emerald-600 mt-0.5">${kpiFtds}</p>
               </div>
             </div>
-            <div class="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100">
-              <div class="p-5">
-                <div class="flex items-center">
-                  <div class="flex-shrink-0 bg-gray-200 rounded-md p-3"><span class="text-xl">🎯</span></div>
-                  <div class="ml-4 w-0 flex-1">
-                    <dl>
-                      <dt class="text-xs font-semibold text-gray-500 uppercase tracking-wide truncate">Custo Médio FTD (Ads)</dt>
-                      <dd class="mt-1"><div class="text-xl font-bold text-gray-900">${formatBRL(kpiCustoFtdNum)}</div></dd>
-                    </dl>
-                  </div>
-                </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center gap-4 col-span-2 lg:col-span-1">
+              <div class="bg-gray-100 p-2.5 rounded-lg"><span class="text-lg">🎯</span></div>
+              <div class="min-w-0">
+                <p class="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide">CPA Médio (FTD)</p>
+                <p class="text-lg md:text-xl font-bold text-gray-900 mt-0.5">${formatBRL(kpiCustoFtdNum)}</p>
               </div>
             </div>
+
           </div>
 
           <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-              <h3 class="text-lg font-semibold text-gray-900">📊 Performance por Funil</h3>
+            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <h3 class="text-base font-bold text-gray-800 uppercase tracking-wide">📊 Performance por Funil</h3>
             </div>
             <div class="overflow-x-auto">
               ${adsPorFunil.length > 0 ? `
@@ -1395,9 +1374,9 @@ app.get("/dashboard", async (req, res) => {
           </div>
 
           ${adsPorFunil.length > 0 ? `
-          <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden max-w-3xl">
+          <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden max-w-2xl">
             <div class="px-6 py-3 border-b border-gray-200 bg-gray-50">
-              <h3 class="text-sm font-semibold text-gray-700">📉 Taxas de Conversão do Funil</h3>
+              <h3 class="text-sm font-bold text-gray-700 uppercase">📉 Taxas de Conversão do Funil</h3>
             </div>
             <div class="overflow-x-auto">
               <table class="min-w-full divide-y divide-gray-200">
@@ -1419,7 +1398,7 @@ app.get("/dashboard", async (req, res) => {
 
           <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden opacity-90 mt-8">
             <div class="px-6 py-4 border-b border-gray-200">
-              <h3 class="text-lg font-semibold text-gray-900">📡 Log Geral de Eventos</h3>
+              <h3 class="text-base font-bold text-gray-800 uppercase tracking-wide">📡 Log Geral de Eventos</h3>
             </div>
             <div class="overflow-x-auto">
               ${totais.length > 0 ? `
@@ -1439,21 +1418,23 @@ app.get("/dashboard", async (req, res) => {
             </div>
           </div>
 
+          <div class="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden mt-8">
+            <details class="group">
+              <summary class="flex items-center justify-between px-6 py-4 cursor-pointer bg-gray-50 hover:bg-gray-100 transition-colors list-none outline-none">
+                <span class="text-sm font-bold text-gray-700 uppercase flex items-center gap-2">📝 Observações e Notas Técnicas</span>
+                <span class="text-gray-400 group-open:rotate-180 transition-transform duration-200 text-xs">▼ Expandir</span>
+              </summary>
+              <div class="p-6 text-sm text-gray-600 border-t border-gray-200 bg-white">
+                <ul class="list-disc pl-5 space-y-2">
+                  <li><strong>01/03/2026:</strong> Evento de FTD começou a marcar perfeitamente na Novibet.</li>
+                  <li><strong>02/03/2026:</strong> Link do funil F03 ajustado para passar S2 (agora as tags chegam completas).</li>
+                  <li><strong>Superbet:</strong> Operando isolado no Slot 5 do Meta.</li>
+                </ul>
+              </div>
+            </details>
+          </div>
+
         </main>
-
-        <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
-          <details class="text-xs text-gray-300 cursor-pointer opacity-30 hover:opacity-100 transition-opacity select-none inline-block">
-            <summary class="outline-none">_observações</summary>
-            <div class="mt-2 p-4 bg-gray-50 border border-gray-200 rounded text-gray-600 shadow-sm w-full sm:w-96 cursor-text select-text">
-              <ul class="list-disc pl-4 space-y-1">
-                <li>Evento X começou a marcar perfeitamente no dia 01/03.</li>
-                <li>Link do funil f03 ajustado para passar S2 na Novibet.</li>
-                <li>Superbet isolado no Slot 5 do Meta.</li>
-              </ul>
-            </div>
-          </details>
-        </footer>
-
       </body>
       </html>
     `;
