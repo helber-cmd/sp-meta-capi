@@ -358,7 +358,7 @@ const EVENT_MAP = {
     extra_custom_data: { origem: "whatsapp", produto: "bilhete_superbet" }
   },
 
-f01: {
+start_f01: {
   event_name: "Start_F01",
   extra_custom_data: { origem: "whatsapp", funil: "f01" }
 },
