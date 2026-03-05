@@ -691,6 +691,11 @@ app.get("/esportivabet/postback", async (req, res) => {
     
     console.log("\n---------------------------------------------------------");
     console.log("⚽ [ESPORTIVABET] Postback recebido.");
+    
+    // 👇 ADICIONE ESTAS DUAS LINHAS AQUI 👇
+    console.log("🔗 URL COMPLETA:", req.originalUrl);
+    console.log("📦 DADOS BRUTOS (ESPORTIVABET):", JSON.stringify(q, null, 2));
+    // 👆 =================================== 👆
 
     // 1. Identifica o Evento
     const evType = (q.ev || "").toLowerCase().trim();
