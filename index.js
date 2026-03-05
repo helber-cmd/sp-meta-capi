@@ -283,8 +283,31 @@ const PIXEL_SLOTS = {
 };
 
 const EVENT_SLOT_MAP = {
-  bilhete_vupibet: 1, bilhete_novibet: 2,
-  bilhete_esportivabet: 3, bilhete_esportivabet2: 4, bilhete_mgm: 5,
+
+  // --- BILHETES ---
+
+  bilhete_vupibet: 1, 
+
+  bilhete_novibet: 2,
+
+  bilhete_esportivabet: 3, 
+
+  bilhete_esportivabet2: 4, 
+
+  bilhete_mgm: 5,
+
+
+
+  // --- ENTRADAS DE FUNIL (STARTS) ---
+
+  start_f03: 3, // Vai pro Slot 3 (Esportivabet)
+
+  start_f04: 2, // Vai pro Slot 2 (Novibet)
+
+  start_f09: 2, // Vai pro Slot 2 (Novibet)
+
+ start_f10: 3 // Vai pro Slot 3 (Esportivabet)
+
 };
 
 const EVENT_MAP = {
