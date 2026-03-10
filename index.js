@@ -972,13 +972,12 @@ app.post("/novibet/deposito", async (req, res) => {
   }
 });
 // =====================================================================
-// ROTA SUPERBET (INCOME ACCESS) - PADRÃO FINAL [ACID] & [ET]
+// ROTA SUPERBET (INCOME ACCESS) - APENAS PIXEL MATRIZ (SEM DASHBOARD)
 // =====================================================================
 app.get("/superbet", async (req, res) => {
   try {
     const q = req.query;
     
-    // LOG VISUAL (Igual da Novibet)
     console.log("\n---------------------------------------------------------");
     console.log("💰 [SUPERBET] Postback recebido.");
     console.log("📦 DADOS BRUTOS:", JSON.stringify(q, null, 2));
@@ -986,17 +985,16 @@ app.get("/superbet", async (req, res) => {
     // 1. Identifica Evento (reg ou ftd)
     const etType = safeString(q.et).toLowerCase().trim();
     
-    let metaEventName = "registro_superbet"; // Padrão se for 'reg'
+    let metaEventName = "registro_superbet"; 
     let isFtd = false;
 
-    // Se o gerente mandar 'ftd', viramos a chave para Compra
     if (etType === "ftd" || etType.includes("dep")) {
         metaEventName = "ftd_superbet"; 
         isFtd = true;
     }
 
-    // 2. O Cruzamento: Pegamos o ID no parâmetro 'cid' (que é o [acid])
-    const leadId = cleanStr(q.cid) || cleanStr(q.uid); // Mantive uid de backup
+    // 2. O Cruzamento: O UUID agora chega no parâmetro 'cid'
+    const leadId = cleanStr(q.cid) || cleanStr(q.uid); 
     
     // Validação de Segurança
     if (!isValidUUID(leadId)) {
@@ -1014,7 +1012,6 @@ app.get("/superbet", async (req, res) => {
     }
 
     // 3. Monta o Evento pro Facebook
-    // Se for FTD e não vier valor, assume R$ 30 (padrão de mercado)
     const value = parseValue(q.val) || parseValue(q.amount) || (isFtd ? 30 : 0);
     const currency = cleanStr(q.cur) || cleanStr(q.currency) || "BRL";
     
@@ -1037,21 +1034,24 @@ app.get("/superbet", async (req, res) => {
         currency: currency,
         value: value,
         lead_id: leadId,
-        income_event: etType // Guarda o que veio no 'et' para debug
+        income_event: etType 
       }
     };
 
-    // 4. Envia para o Facebook (Slot 5 - Ajuste se tiver slot exclusivo)
-    await sendToMeta(event, 5); 
+    // 4. Envia APENAS para o Facebook Matriz (Sem número de Slot)
+    console.log(`🚀 [META] Enviando '${metaEventName}' para o Pixel Matriz...`);
+    await sendToMeta(event); 
 
-    // 5. Log Dashboard (Sem usar coluna 'extra')
+    // 5. Log Dashboard (DESATIVADO TEMPORARIAMENTE)
+    /*
     await prisma.eventLog.create({ 
-    data: { 
-        type: isFtd ? "ftd" : "registro", 
-        provider: "superbet", 
-        extra: cleanStr(q.cid) || "direto"
-    } 
-}).catch(e=>{});
+      data: { 
+          type: isFtd ? "ftd" : "registro", 
+          provider: "superbet", 
+          extra: "superbet_global" 
+      } 
+    }).catch(e=>{});
+    */
     
     res.json({ ok: true });
 
@@ -1060,7 +1060,10 @@ app.get("/superbet", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-// ROTA PARA FTD (Primeiro Depósito)
+
+// =====================================================================
+// ROTA PARA FTD SUPERBET (POST) - APENAS PIXEL MATRIZ (SEM DASHBOARD)
+// =====================================================================
 app.post("/superbet/ftd", async (req, res) => {
   try {
     console.log("\n---------------------------------------------------------");
@@ -1068,14 +1071,14 @@ app.post("/superbet/ftd", async (req, res) => {
     const data = { ...req.query, ...req.body };
     console.log("📦 DADOS BRUTOS (SUPERBET FTD):", JSON.stringify(data, null, 2));
 
-    const leadId = cleanStr(data.s2) || cleanStr(data.s1);
+    const leadId = cleanStr(data.s2) || cleanStr(data.s1) || cleanStr(data.cid);
     const context = await getLeadContextSmart(leadId);
 
     const value = parseValue(data.value) || parseValue(data.amount);
     const event_id = `ftd_superbet_${cleanStr(data.player_id) || leadId}_${Date.now()}`;
 
     const event = {
-      event_name: "Purchase", // FTD sempre enviamos como 'Purchase' para o Meta otimizar melhor
+      event_name: "Purchase", 
       event_time: Math.floor(Date.now()/1000),
       action_source: "website",
       event_id: event_id,
@@ -1096,12 +1099,16 @@ app.post("/superbet/ftd", async (req, res) => {
       }
     };
 
-    console.log(`🚀 [META] Enviando 'Purchase' (FTD) para o Facebook (Slot 5)...`);
-    await sendToMeta(event, 5); // SLOT 5
+    // Envia APENAS para o Pixel Matriz
+    console.log(`🚀 [META] Enviando 'Purchase' (FTD) para o Pixel Matriz...`);
+    await sendToMeta(event); 
 
+    // Dashboard DESATIVADO TEMPORARIAMENTE
+    /*
     await prisma.eventLog.create({ 
-      data: { type: "ftd", provider: "superbet", extra: cleanStr(data.s1) || "direto" } 
-    });
+      data: { type: "ftd", provider: "superbet", extra: "superbet_global" } 
+    }).catch(e=>{});
+    */
 
     res.json({ ok: true });
   } catch (e) { 
@@ -1109,7 +1116,6 @@ app.post("/superbet/ftd", async (req, res) => {
     res.status(500).json({ error: e.message }); 
   }
 });
-
 // =========================
 // FACEBOOK ADS METRICS (N8N)
 // =========================
