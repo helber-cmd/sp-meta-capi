@@ -367,6 +367,11 @@ start_f03: {
   event_name: "Start_F03",
   extra_custom_data: { origem: "whatsapp", funil: "f03" }
 },
+
+  start_f11: {
+  event_name: "Start_F11",
+  extra_custom_data: { origem: "whatsapp", funil: "f11" }
+},
   
   f01: {
   event_name: "f01_antigo",
