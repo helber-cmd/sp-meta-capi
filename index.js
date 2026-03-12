@@ -982,37 +982,46 @@ app.post("/novibet/deposito", async (req, res) => {
   }
 });
 // =====================================================================
-// ROTA SUPERBET (INCOME ACCESS) - APENAS PIXEL MATRIZ (SEM DASHBOARD)
+// ROTA SUPERBET (ALL) - ASPIRADOR UNIVERSAL + EXTRATOR DE UUID
 // =====================================================================
-app.get("/superbet", async (req, res) => {
+app.all("/superbet", async (req, res) => {
   try {
-    const q = req.query;
+    const q = { ...req.query, ...req.body };
     
     console.log("\n---------------------------------------------------------");
-    console.log("💰 [SUPERBET] Postback recebido.");
-    console.log("📦 DADOS BRUTOS:", JSON.stringify(q, null, 2));
+    console.log(`💰 [SUPERBET PRINCIPAL] Postback recebido via ${req.method}.`);
+    
+    // RAIO-X: Mostra a URL e os dados sujos para debug
+    console.log("🔗 URL CRUA:", req.originalUrl);
+    console.log("📦 TODOS OS DADOS BRUTOS:", JSON.stringify(q, null, 2));
     
     // 1. Identifica Evento (reg ou ftd)
     const etType = safeString(q.et).toLowerCase().trim();
     
-    let metaEventName = "registro_superbet"; 
+    let metaEventName = "Superbet_Registro"; 
     let isFtd = false;
 
     if (etType === "ftd" || etType.includes("dep")) {
-        metaEventName = "ftd_superbet"; 
+        metaEventName = "SuperBet_FTD"; 
         isFtd = true;
     }
 
-    // 2. O Cruzamento: O UUID agora chega no parâmetro 'cid'
-    const leadId = cleanStr(q.cid) || cleanStr(q.uid); 
+    // 2. O Cruzamento e Extração: Pega o dado sujo e tira o UUID
+    const idSujo = cleanStr(q.cid) || cleanStr(q.uid) || cleanStr(q.acid) || ""; 
     
-    // Validação de Segurança
+    // Regex: Caça o formato 8-4-4-4-12 do UUID
+    const match = idSujo.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    const leadId = match ? match[0] : idSujo;
+
+    console.log(`🔍 [SUPERBET] Extração: Recebido "${idSujo}" -> UUID: "${leadId}"`);
+    
+    // Validação de Segurança (Usa o UUID limpo)
     if (!isValidUUID(leadId)) {
-        console.log(`🚫 [SUPERBET] Lead ID inválido ou ausente (cid): ${leadId}`);
+        console.log(`🚫 [SUPERBET] Bloqueado: Nenhum UUID de 36 chars encontrado na string.`);
         return res.json({ ok: true, filtered: true, reason: "invalid_uuid" });
     }
 
-    // Busca no Banco (Recupera FBP, FBC do SendPulse)
+    // Busca no Banco (Recupera FBP, FBC do SendPulse usando o UUID limpo)
     const context = await getLeadContextByAfp(leadId); 
 
     if (context) {
@@ -1037,13 +1046,14 @@ app.get("/superbet", async (req, res) => {
         client_user_agent: context?.client_user_agent || getUserAgent(req),
         fbp: context?.fbp || undefined,
         fbc: context?.fbc || undefined,
-        external_id: [sha256(leadId)]
+        external_id: [sha256(leadId)] // Meta exige apenas o UUID
       },
       custom_data: {
         origem: "superbet",
         currency: currency,
         value: value,
-        lead_id: leadId,
+        lead_id: leadId,      // Enviamos limpo pro Meta
+        raw_cid: idSujo,      // Mantemos o sujo aqui caso você precise debugar no Gerenciador
         income_event: etType 
       }
     };
@@ -1072,23 +1082,31 @@ app.get("/superbet", async (req, res) => {
 });
 
 // =====================================================================
-// ROTA PARA FTD SUPERBET (POST) - APENAS PIXEL MATRIZ (SEM DASHBOARD)
+// ROTA PARA FTD SUPERBET (ALL) - ROTA SECUNDÁRIA COM EXTRATOR
 // =====================================================================
-app.post("/superbet/ftd", async (req, res) => {
+app.all("/superbet/ftd", async (req, res) => {
   try {
+    const q = { ...req.query, ...req.body };
+    
     console.log("\n---------------------------------------------------------");
-    console.log("💎 [SUPERBET] Novo FTD (Primeiro Depósito) recebido.");
-    const data = { ...req.query, ...req.body };
-    console.log("📦 DADOS BRUTOS (SUPERBET FTD):", JSON.stringify(data, null, 2));
+    console.log(`💎 [SUPERBET SECUNDÁRIA] Novo FTD via ${req.method}.`);
+    console.log("🔗 URL CRUA:", req.originalUrl);
+    console.log("📦 TODOS OS DADOS BRUTOS:", JSON.stringify(q, null, 2));
 
-    const leadId = cleanStr(data.s2) || cleanStr(data.s1) || cleanStr(data.cid);
+    // A MÁGICA DA EXTRAÇÃO
+    const idSujo = cleanStr(q.s2) || cleanStr(q.s1) || cleanStr(q.cid) || cleanStr(q.acid) || "";
+    const match = idSujo.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    const leadId = match ? match[0] : idSujo;
+
+    console.log(`🔍 [SUPERBET] Extração: Recebido "${idSujo}" -> UUID: "${leadId}"`);
+
     const context = await getLeadContextSmart(leadId);
 
-    const value = parseValue(data.value) || parseValue(data.amount);
-    const event_id = `ftd_superbet_${cleanStr(data.player_id) || leadId}_${Date.now()}`;
+    const value = parseValue(q.value) || parseValue(q.amount) || 30;
+    const event_id = `ftd_superbet_${cleanStr(q.player_id) || leadId}_${Date.now()}`;
 
     const event = {
-      event_name: "Purchase", 
+      event_name: "SuperBet_FTD", 
       event_time: Math.floor(Date.now()/1000),
       action_source: "website",
       event_id: event_id,
@@ -1104,13 +1122,12 @@ app.post("/superbet/ftd", async (req, res) => {
         value: value, 
         currency: "BRL", 
         lead_id: leadId,
-        s1: data.s1,
-        s2: data.s2
+        raw_cid: idSujo
       }
     };
 
     // Envia APENAS para o Pixel Matriz
-    console.log(`🚀 [META] Enviando 'Purchase' (FTD) para o Pixel Matriz...`);
+    console.log(`🚀 [META] Enviando 'SuperBet_FTD' para o Pixel Matriz...`);
     await sendToMeta(event); 
 
     // Dashboard DESATIVADO TEMPORARIAMENTE
