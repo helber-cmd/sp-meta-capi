@@ -817,13 +817,11 @@ app.get("/esportivabet/postback", async (req, res) => {
 });
 
 // =====================================================================
-// ROTA CASSINO (S2S HTTP) - ROTA DINÂMICA POR EVENTO
+// ROTA CASSINO (S2S HTTP) - ROTA DINÂMICA (MATCH DIRETO SENDPULSE)
 // =====================================================================
 app.all("/cassino/:ev", async (req, res) => {
   try {
     const q = { ...req.query, ...req.body };
-    
-    // 👇 A MÁGICA AQUI: Pega a última palavra da URL (reg ou ftd)
     const evType = safeString(req.params.ev).toLowerCase().trim();
     
     console.log("\n---------------------------------------------------------");
@@ -844,28 +842,39 @@ app.all("/cassino/:ev", async (req, res) => {
         return res.json({ ok: true, reason: "event_ignored" });
     }
 
-    // Extração Ninja do UUID (Regex)
-    const idSujo = cleanStr(q.afp) || cleanStr(q.afp3) || cleanStr(q.click_id) || cleanStr(q.cid) || ""; 
-    const match = idSujo.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
-    const leadId = match ? match[0] : idSujo;
+    // 👇 1. RECEPÇÃO DIRETA (Sem cortes, igual Vupi/Esportiva)
+    const leadId = cleanStr(q.afp); 
+    const funil = cleanStr(q.afp1) || "direto"; // ANA Partners manda o funil aqui
 
-    console.log(`🔍 [CASSINO] Extração: Recebido "${idSujo}" -> UUID: "${leadId}"`);
+    console.log(`🔍 [CASSINO] Funil (afp1): [${funil.toUpperCase()}] | UUID (afp): "${leadId}"`);
 
     // Validação de Segurança
     if (!isValidUUID(leadId)) {
-        console.log(`🚫 [CASSINO] Bloqueado: Nenhum UUID válido encontrado.`);
+        console.log(`🚫 [CASSINO] Bloqueado: Nenhum UUID válido encontrado no afp.`);
         return res.json({ ok: true, dash: "ignorado", meta: "bloqueado_sem_uuid" });
     }
 
-    // Match e Construção do Evento pro Meta
+    // 👇 2. O MATCH PERFEITO COM A SENDPULSE
     const context = await getLeadContextByAfp(leadId);
+    
+    if (context) {
+        console.log(`✅ [CASSINO] MATCH CONFIRMADO! Dados recuperados com sucesso (fbp/fbc/ip).`);
+    } else {
+        console.warn(`⚠️ [CASSINO] Sem Match no banco para o afp: ${leadId}`);
+    }
+
     const valueParam = parseFloat(q.val) || parseFloat(q.amount) || parseFloat(q.payout) || (isFtd ? 30 : 0);
 
-    // Capturando as UTMs
-    const utm_source = cleanStr(q.utm_source);
-    const utm_medium = cleanStr(q.utm_medium);
-    const utm_campaign = cleanStr(q.utm_campaign) || cleanStr(q.campaign_name);
+    // Prioriza as UTMs que vieram do postback, se não tiver, pega as que o SendPulse salvou
+    const utm_source = cleanStr(q.utm_source) || context?.utm_source;
+    const utm_medium = cleanStr(q.utm_medium) || context?.utm_medium;
+    const utm_campaign = cleanStr(q.utm_campaign) || cleanStr(q.campaign_name) || context?.utm_campaign;
 
+    // Caso você adicione ph/em no seu schema do banco no futuro, o código já está pronto para ler
+    const userPhone = context?.phone ? sha256(cleanStr(context.phone).replace(/\D+/g, "")) : undefined;
+    const userEmail = context?.email ? sha256(cleanStr(context.email).toLowerCase()) : undefined;
+
+    // 👇 3. EMPACOTAMENTO PRO META
     const event = {
       event_name: metaEventName,
       event_time: Math.floor(Date.now() / 1000),
@@ -875,25 +884,37 @@ app.all("/cassino/:ev", async (req, res) => {
         client_ip_address: context?.client_ip_address || getClientIp(req),
         client_user_agent: context?.client_user_agent || getUserAgent(req), 
         fbp: context?.fbp || undefined,
-        fbc: context?.fbc || undefined,
+        // Se houver fbclid salvo, mas não fbc, a gente formata na hora para garantir o match
+        fbc: context?.fbc || (context?.fbclid ? `fb.1.${Date.now()}.${context.fbclid}` : undefined),
+        ph: userPhone ? [userPhone] : undefined,
+        em: userEmail ? [userEmail] : undefined,
         external_id: [sha256(leadId)] 
       },
       custom_data: {
         origem: "anapartners",
         value: valueParam,
         currency: "BRL",
-        raw_afp: idSujo,
         utm_source: utm_source,
         utm_medium: utm_medium,
-        utm_campaign: utm_campaign
+        utm_campaign: utm_campaign,
+        funil: funil
       }
     };
 
-    // Envia para a Matriz
+    // Envia para o Pixel Matriz
     const metaResp = await sendToMeta(event); 
-    console.log(`🚀 [CASSINO] Processado: ${metaEventName} para a Matriz!`);
+    console.log(`🚀 [CASSINO] Processado: ${metaEventName} para a Matriz com todos os dados da SendPulse!`);
 
-    res.json({ ok: true, meta: metaResp });
+    // Dashboard recebendo o Funil exato
+    await prisma.eventLog.create({ 
+      data: { 
+          type: isFtd ? "ftd" : "registro", 
+          provider: "cassino", 
+          extra: funil 
+      } 
+    }).catch(e => console.error("Erro ao salvar Cassino no banco:", e.message));
+
+    res.json({ ok: true, dash: "salvo", meta: metaResp });
 
   } catch (err) {
     console.error("❌ [ERRO CASSINO]:", err.message);
