@@ -815,6 +815,91 @@ app.get("/esportivabet/postback", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// =====================================================================
+// ROTA CASSINO (S2S HTTP) - ROTA DINÂMICA POR EVENTO
+// =====================================================================
+app.all("/cassino/:ev", async (req, res) => {
+  try {
+    const q = { ...req.query, ...req.body };
+    
+    // 👇 A MÁGICA AQUI: Pega a última palavra da URL (reg ou ftd)
+    const evType = safeString(req.params.ev).toLowerCase().trim();
+    
+    console.log("\n---------------------------------------------------------");
+    console.log(`🎰 [CASSINO] Postback recebido. Evento Roteado: [${evType.toUpperCase()}]`);
+    console.log("🔗 URL CRUA:", req.originalUrl);
+    console.log("📦 DADOS BRUTOS:", JSON.stringify(q, null, 2));
+
+    let metaEventName = "";
+    let isFtd = false;
+
+    if (evType === "reg") {
+        metaEventName = "Registro_Cassino"; 
+    } else if (evType === "ftd" || evType === "qftd") {
+        metaEventName = "FTD_Cassino";
+        isFtd = true;
+    } else {
+        console.log(`⚠️ [CASSINO] Evento ignorado ou não mapeado: ${evType}`);
+        return res.json({ ok: true, reason: "event_ignored" });
+    }
+
+    // Extração Ninja do UUID (Regex)
+    const idSujo = cleanStr(q.afp) || cleanStr(q.afp3) || cleanStr(q.click_id) || cleanStr(q.cid) || ""; 
+    const match = idSujo.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    const leadId = match ? match[0] : idSujo;
+
+    console.log(`🔍 [CASSINO] Extração: Recebido "${idSujo}" -> UUID: "${leadId}"`);
+
+    // Validação de Segurança
+    if (!isValidUUID(leadId)) {
+        console.log(`🚫 [CASSINO] Bloqueado: Nenhum UUID válido encontrado.`);
+        return res.json({ ok: true, dash: "ignorado", meta: "bloqueado_sem_uuid" });
+    }
+
+    // Match e Construção do Evento pro Meta
+    const context = await getLeadContextByAfp(leadId);
+    const valueParam = parseFloat(q.val) || parseFloat(q.amount) || parseFloat(q.payout) || (isFtd ? 30 : 0);
+
+    // Capturando as UTMs
+    const utm_source = cleanStr(q.utm_source);
+    const utm_medium = cleanStr(q.utm_medium);
+    const utm_campaign = cleanStr(q.utm_campaign) || cleanStr(q.campaign_name);
+
+    const event = {
+      event_name: metaEventName,
+      event_time: Math.floor(Date.now() / 1000),
+      action_source: "website",
+      event_id: `${isFtd ? 'pur' : 'reg'}_cas_${leadId}`, 
+      user_data: {
+        client_ip_address: context?.client_ip_address || getClientIp(req),
+        client_user_agent: context?.client_user_agent || getUserAgent(req), 
+        fbp: context?.fbp || undefined,
+        fbc: context?.fbc || undefined,
+        external_id: [sha256(leadId)] 
+      },
+      custom_data: {
+        origem: "anapartners",
+        value: valueParam,
+        currency: "BRL",
+        raw_afp: idSujo,
+        utm_source: utm_source,
+        utm_medium: utm_medium,
+        utm_campaign: utm_campaign
+      }
+    };
+
+    // Envia para a Matriz
+    const metaResp = await sendToMeta(event); 
+    console.log(`🚀 [CASSINO] Processado: ${metaEventName} para a Matriz!`);
+
+    res.json({ ok: true, meta: metaResp });
+
+  } catch (err) {
+    console.error("❌ [ERRO CASSINO]:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 // =====================================================================
 // NOVIBET REGISTRO (VERSÃO CORRIGIDA E OTIMIZADA)
 // =====================================================================
