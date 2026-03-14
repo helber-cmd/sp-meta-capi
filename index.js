@@ -499,13 +499,13 @@ async function sendToMeta(event, slotNumber = null) {
   // 1. Enviar para Pixel Mestre
   if (PIXEL_MASTER.id && PIXEL_MASTER.token) {
     try {
-      console.log(`📤 [MASTER] Enviando evento '${event.event_name}' para pixel mestre...`);
+      // console.log(`📤 [MASTER] Enviando evento '${event.event_name}' para pixel mestre...`);
       results.master = await sendToPixel(event, PIXEL_MASTER.id, PIXEL_MASTER.token);
       // Verifica se o Facebook retornou um erro na resposta
       if (results.master.error) {
           console.error(`❌ [MASTER] Facebook retornou um erro:`, JSON.stringify(results.master.error));
       } else {
-          console.log(`✅ [MASTER] OK:`, JSON.stringify(results.master));
+          // console.log(`✅ [MASTER] OK:`, JSON.stringify(results.master));
       }
     } catch (err) {
       // Loga o erro de conexão/fetch
@@ -521,13 +521,13 @@ async function sendToMeta(event, slotNumber = null) {
     const slot = PIXEL_SLOTS[slotNumber];
     if (slot.id && slot.token) {
       try {
-        console.log(`📤 [SLOT ${slotNumber}] Enviando evento '${event.event_name}' para ${slot.name}...`);
+        // console.log(`📤 [SLOT ${slotNumber}] Enviando evento '${event.event_name}' para ${slot.name}...`);
         results.slot = await sendToPixel(event, slot.id, slot.token);
         results.slotName = slot.name;
         if (results.slot.error) {
             console.error(`❌ [SLOT ${slotNumber}] Facebook retornou um erro:`, JSON.stringify(results.slot.error));
         } else {
-            console.log(`✅ [SLOT ${slotNumber}] OK:`, JSON.stringify(results.slot));
+            // console.log(`✅ [SLOT ${slotNumber}] OK:`, JSON.stringify(results.slot));
         }
       } catch (err) {
         console.error(`❌ [SLOT ${slotNumber}] Erro CRÍTICO ao tentar enviar para ${slot.name}:`, err.message);
@@ -626,7 +626,7 @@ app.post("/sp/event", async (req, res) => {
     const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
     const event = buildSendPulseEvent({ cfg, vars, telegram_id, req });
     
-    console.log(`🚀 [ROTA /sp/event] Recebido: ${eventKey}. Enviando para Meta...`);
+    // console.log(`🚀 [ROTA /sp/event] Recebido: ${eventKey}. Enviando para Meta...`);
     const metaResp = await sendToMeta(event, slotNumber);
     
     saveLeadContext({
@@ -668,7 +668,7 @@ async function compatHandler(req, res, key) {
     const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
     const event = buildSendPulseEvent({ cfg, vars, telegram_id, req });
 
-    console.log(`🚀 [ROTA DE COMPATIBILIDADE] Recebido em /sp/${key}. Enviando para Meta...`);
+    // console.log(`🚀 [ROTA DE COMPATIBILIDADE] Recebido em /sp/${key}. Enviando para Meta...`);
     const metaResp = await sendToMeta(event, slotNumber);
     
     await prisma.eventLog.create({ 
