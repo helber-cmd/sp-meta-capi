@@ -267,37 +267,42 @@ setInterval(relatorioGeral, 60 * 60 * 1000);
 // 🚨 MONITORAMENTO DE ATENÇÃO DE NÚMEROS (SENDPULSE)
 // =====================================================================
 
-// Agora usamos um Map para guardar a HORA exata que te avisamos pela última vez
-const alertasEnviados = new Map(); 
+// Map para guardar a HORA exata do último aviso enviado
+const alertasEnviados = new Map();
 
 // Configurações de tempo
 const TEMPO_PARA_ALERTA_MINUTOS = 30; // Avisa depois de X minutos parado
-const SNOOZE_ALERTA_MINUTOS = 30;     // De quanto em quanto tempo ele volta a te perturbar se continuar parado
+const SNOOZE_ALERTA_MINUTOS = 30;     // De quanto em quanto tempo volta a avisar se continuar parado
 
 async function dispararAlerta(mensagem) {
   try {
-    // Exemplo de disparo via webhook (N8N ou Telegram Bot)
-    /*
-    await fetch(https://discord.com/api/webhooks/1483464710409031690/bxhULJv3X7bfiOCpLeFi2CXLppMQwAtydZhD8Oy2KyJaf_TBV5sX47yE57x8LNyYUz3G, {
+    const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/SEU_NOVO_TOKEN_AQUI"; // ⚠️ Troque pelo novo token!
+
+    const response = await fetch(DISCORD_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: mensagem })
+      body: JSON.stringify({ content: mensagem })
     });
-    */
-    console.log(mensagem); // Mantém no log
+
+    if (!response.ok) {
+      const erro = await response.text();
+      console.error("❌ Discord recusou o webhook:", erro);
+    } else {
+      console.log("✅ Alerta enviado ao Discord com sucesso!");
+    }
   } catch (e) {
-    console.error("Erro ao enviar alerta:", e.message);
+    console.error("❌ Erro ao enviar alerta:", e.message);
   }
 }
 
 async function verificarQuedaDeNumeros() {
   try {
     const agora = new Date();
-    
-    // Regra 1: Tem que ter rodado nas últimas 24 horas (Ignora campanhas pausadas de dias atrás)
+
+    // Regra 1: Só considera funis que rodaram nas últimas 24 horas
     const limite24h = new Date(agora.getTime() - 24 * 60 * 60 * 1000);
-    
-    // Regra 2: O tempo limite sem receber mensagens
+
+    // Regra 2: Tempo limite sem receber mensagens para disparar alerta
     const limiteInatividade = new Date(agora.getTime() - TEMPO_PARA_ALERTA_MINUTOS * 60 * 1000);
 
     const funisAtivos = await prisma.eventLog.groupBy({
@@ -307,34 +312,31 @@ async function verificarQuedaDeNumeros() {
         type: { startsWith: 'Start_' },
         createdAt: { gte: limite24h }
       },
-      _max: {
-        createdAt: true
-      }
+      _max: { createdAt: true }
     });
 
     for (const funil of funisAtivos) {
-      const nomeFunil = funil.type; 
+      const nomeFunil = funil.type;
       const ultimoEvento = funil._max.createdAt;
 
-      // Se o último evento foi ANTES do limite de inatividade (Tá parado há +30m)
+      // Se o último evento foi ANTES do limite de inatividade (parado há +30min)
       if (ultimoEvento < limiteInatividade) {
-        
         const ultimoAviso = alertasEnviados.get(nomeFunil);
         const tempoDesdeUltimoAviso = ultimoAviso ? (agora - ultimoAviso) / 60000 : Infinity;
 
-        // Só te avisa se for a primeira vez OU se já passou o tempo do Snooze (ex: já faz 30 min que te avisei)
+        // Avisa só se for a primeira vez OU se já passou o tempo de snooze
         if (tempoDesdeUltimoAviso >= SNOOZE_ALERTA_MINUTOS) {
           const tempoParado = Math.floor((agora - ultimoEvento) / 60000);
           const msg = `⚠️ *ATENÇÃO: VERIFIQUE O NÚMERO!*\nO funil *${nomeFunil}* não recebe leads há ${tempoParado} minutos. Verifique se o número caiu ou se o tráfego está lento.`;
-          
+
           await dispararAlerta(msg);
-          
-          // Registra a hora que te avisou para não fazer spam no próximo minuto
-          alertasEnviados.set(nomeFunil, agora); 
+
+          // Registra a hora do aviso para controle do snooze
+          alertasEnviados.set(nomeFunil, agora);
         }
 
       } else {
-        // Se entrou evento recente, o funil está saudável. Removemos do radar de alertas.
+        // Funil saudável — remove do radar de alertas
         if (alertasEnviados.has(nomeFunil)) {
           alertasEnviados.delete(nomeFunil);
         }
