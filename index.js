@@ -276,8 +276,7 @@ const SNOOZE_ALERTA_MINUTOS = 30;     // De quanto em quanto tempo volta a avisa
 
 async function dispararAlerta(mensagem) {
   try {
-    const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/SEU_NOVO_TOKEN_AQUI"; // ⚠️ Troque pelo novo token!
-
+    const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1483464710409031690/bxhULJv3X7bfiOCpLeFi2CXLppMQwAtydZhD8Oy2KyJaf_TBV5sX47yE57x8LNyYUz3G"; // 
     const response = await fetch(DISCORD_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
