@@ -2077,6 +2077,108 @@ app.get("/relatorio", async (req, res) => {
 });
 
 const port = process.env.PORT || 10000;
+
+// =====================================================================
+// 🔌 API JSON PARA O DASHBOARD LOVABLE
+// =====================================================================
+
+// Middleware de CORS (permite o Lovable acessar)
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  next();
+});
+
+// Rota principal — todos os dados do dashboard
+app.get("/api/dashboard", async (req, res) => {
+  try {
+    const dataInicio = req.query.data_inicio || null;
+    const dataFim = req.query.data_fim || null;
+
+    const { totais, adsPorFunil, eventosPorFunil } = await buscarDadosDashboard(dataInicio, dataFim);
+
+    // Monta a tabela de performance igual ao dashboard atual
+    const performance = adsPorFunil.map(a => {
+      const ev = eventosPorFunil[a.funil] || { start: 0, registro: 0, ftd: 0 };
+      const gasto = parseFloat(a.gasto);
+      return {
+        funil: a.funil,
+        gasto: gasto,
+        impressoes: a.impressoes,
+        cliques: a.cliques,
+        ctr: a.ctr,
+        cpm: a.cpm,
+        starts: ev.start,
+        registros: ev.registro,
+        ftds: ev.ftd,
+        cpaStart: ev.start > 0 ? (gasto / ev.start) : null,
+        cpaReg: ev.registro > 0 ? (gasto / ev.registro) : null,
+        cpaFtd: ev.ftd > 0 ? (gasto / ev.ftd) : null,
+        txStartReg: ev.start > 0 ? ((ev.registro / ev.start) * 100).toFixed(2) : "0.00",
+        txRegFtd: ev.registro > 0 ? ((ev.ftd / ev.registro) * 100).toFixed(2) : "0.00",
+        txStartFtd: ev.start > 0 ? ((ev.ftd / ev.start) * 100).toFixed(2) : "0.00",
+      };
+    });
+
+    // KPIs gerais
+    const kpiGasto = adsPorFunil.reduce((acc, a) => acc + parseFloat(a.gasto || 0), 0);
+    const kpiStarts = performance.reduce((acc, p) => acc + p.starts, 0);
+    const kpiRegistros = performance.reduce((acc, p) => acc + p.registros, 0);
+    const kpiFtds = performance.reduce((acc, p) => acc + p.ftds, 0);
+    const kpiCpaFtd = kpiFtds > 0 ? (kpiGasto / kpiFtds) : 0;
+
+    res.json({
+      ok: true,
+      kpis: {
+        gastoTotal: kpiGasto,
+        starts: kpiStarts,
+        registros: kpiRegistros,
+        ftds: kpiFtds,
+        cpaFtd: kpiCpaFtd
+      },
+      performance,
+      eventos: totais
+    });
+
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Rota de status dos funis (monitoramento)
+app.get("/api/funis/status", async (req, res) => {
+  try {
+    const agora = new Date();
+    const limite24h = new Date(agora.getTime() - 24 * 60 * 60 * 1000);
+    const limiteInatividade = new Date(agora.getTime() - TEMPO_PARA_ALERTA_MINUTOS * 60 * 1000);
+
+    const funis = await prisma.eventLog.groupBy({
+      by: ['type'],
+      where: {
+        provider: 'sendpulse',
+        type: { startsWith: 'Start_' },
+        createdAt: { gte: limite24h }
+      },
+      _max: { createdAt: true }
+    });
+
+    const status = funis.map(f => {
+      const ultimoEvento = f._max.createdAt;
+      const minutos = Math.floor((agora - ultimoEvento) / 60000);
+      return {
+        funil: f.type,
+        ultimoEvento: ultimoEvento,
+        minutosParado: minutos,
+        ativo: ultimoEvento >= limiteInatividade
+      };
+    });
+
+    res.json({ ok: true, status });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`🚀 v2.0.0 listening on port ${port}`);
 });
