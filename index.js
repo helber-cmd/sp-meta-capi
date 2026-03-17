@@ -383,9 +383,364 @@ start_f03: {
   extra_custom_data: { origem: "whatsapp", funil: "f01_03" }
 },
 
+  
+
   start_f01_02: {
   event_name: "start_f01_02",
   extra_custom_data: { origem: "whatsapp", funil: "f01_02" }
+},
+
+  start_f13: {
+  event_name: "Start_F13",
+  extra_custom_data: { origem: "whatsapp", funil: "f13" }
+},
+start_f14: {
+  event_name: "Start_F14",
+  extra_custom_data: { origem: "whatsapp", funil: "f14" }
+},
+start_f15: {
+  event_name: "Start_F15",
+  extra_custom_data: { origem: "whatsapp", funil: "f15" }
+},
+start_f16: {
+  event_name: "Start_F16",
+  extra_custom_data: { origem: "whatsapp", funil: "f16" }
+},
+start_f17: {
+  event_name: "Start_F17",
+  extra_custom_data: { origem: "whatsapp", funil: "f17" }
+},
+start_f18: {
+  event_name: "Start_F18",
+  extra_custom_data: { origem: "whatsapp", funil: "f18" }
+},
+start_f19: {
+  event_name: "Start_F19",
+  extra_custom_data: { origem: "whatsapp", funil: "f19" }
+},
+start_f20: {
+  event_name: "Start_F20",
+  extra_custom_data: { origem: "whatsapp", funil: "f20" }
+},
+start_f21: {
+  event_name: "Start_F21",
+  extra_custom_data: { origem: "whatsapp", funil: "f21" }
+},
+start_f22: {
+  event_name: "Start_F22",
+  extra_custom_data: { origem: "whatsapp", funil: "f22" }
+},
+start_f23: {
+  event_name: "Start_F23",
+  extra_custom_data: { origem: "whatsapp", funil: "f23" }
+},
+start_f24: {
+  event_name: "Start_F24",
+  extra_custom_data: { origem: "whatsapp", funil: "f24" }
+},
+start_f25: {
+  event_name: "Start_F25",
+  extra_custom_data: { origem: "whatsapp", funil: "f25" }
+},
+start_f26: {
+  event_name: "Start_F26",
+  extra_custom_data: { origem: "whatsapp", funil: "f26" }
+},
+start_f27: {
+  event_name: "Start_F27",
+  extra_custom_data: { origem: "whatsapp", funil: "f27" }
+},
+start_f28: {
+  event_name: "Start_F28",
+  extra_custom_data: { origem: "whatsapp", funil: "f28" }
+},
+start_f29: {
+  event_name: "Start_F29",
+  extra_custom_data: { origem: "whatsapp", funil: "f29" }
+},
+start_f30: {
+  event_name: "Start_F30",
+  extra_custom_data: { origem: "whatsapp", funil: "f30" }
+},
+start_f31: {
+  event_name: "Start_F31",
+  extra_custom_data: { origem: "whatsapp", funil: "f31" }
+},
+start_f32: {
+  event_name: "Start_F32",
+  extra_custom_data: { origem: "whatsapp", funil: "f32" }
+},
+start_f33: {
+  event_name: "Start_F33",
+  extra_custom_data: { origem: "whatsapp", funil: "f33" }
+},
+start_f34: {
+  event_name: "Start_F34",
+  extra_custom_data: { origem: "whatsapp", funil: "f34" }
+},
+start_f35: {
+  event_name: "Start_F35",
+  extra_custom_data: { origem: "whatsapp", funil: "f35" }
+},
+start_f36: {
+  event_name: "Start_F36",
+  extra_custom_data: { origem: "whatsapp", funil: "f36" }
+},
+start_f37: {
+  event_name: "Start_F37",
+  extra_custom_data: { origem: "whatsapp", funil: "f37" }
+},
+start_f38: {
+  event_name: "Start_F38",
+  extra_custom_data: { origem: "whatsapp", funil: "f38" }
+},
+start_f39: {
+  event_name: "Start_F39",
+  extra_custom_data: { origem: "whatsapp", funil: "f39" }
+},
+start_f40: {
+  event_name: "Start_F40",
+  extra_custom_data: { origem: "whatsapp", funil: "f40" }
+},
+start_f41: {
+  event_name: "Start_F41",
+  extra_custom_data: { origem: "whatsapp", funil: "f41" }
+},
+start_f42: {
+  event_name: "Start_F42",
+  extra_custom_data: { origem: "whatsapp", funil: "f42" }
+},
+start_f43: {
+  event_name: "Start_F43",
+  extra_custom_data: { origem: "whatsapp", funil: "f43" }
+},
+start_f44: {
+  event_name: "Start_F44",
+  extra_custom_data: { origem: "whatsapp", funil: "f44" }
+},
+start_f45: {
+  event_name: "Start_F45",
+  extra_custom_data: { origem: "whatsapp", funil: "f45" }
+},
+start_f46: {
+  event_name: "Start_F46",
+  extra_custom_data: { origem: "whatsapp", funil: "f46" }
+},
+start_f47: {
+  event_name: "Start_F47",
+  extra_custom_data: { origem: "whatsapp", funil: "f47" }
+},
+start_f48: {
+  event_name: "Start_F48",
+  extra_custom_data: { origem: "whatsapp", funil: "f48" }
+},
+start_f49: {
+  event_name: "Start_F49",
+  extra_custom_data: { origem: "whatsapp", funil: "f49" }
+},
+start_f50: {
+  event_name: "Start_F50",
+  extra_custom_data: { origem: "whatsapp", funil: "f50" }
+},
+start_f51: {
+  event_name: "Start_F51",
+  extra_custom_data: { origem: "whatsapp", funil: "f51" }
+},
+start_f52: {
+  event_name: "Start_F52",
+  extra_custom_data: { origem: "whatsapp", funil: "f52" }
+},
+start_f53: {
+  event_name: "Start_F53",
+  extra_custom_data: { origem: "whatsapp", funil: "f53" }
+},
+start_f54: {
+  event_name: "Start_F54",
+  extra_custom_data: { origem: "whatsapp", funil: "f54" }
+},
+start_f55: {
+  event_name: "Start_F55",
+  extra_custom_data: { origem: "whatsapp", funil: "f55" }
+},
+start_f56: {
+  event_name: "Start_F56",
+  extra_custom_data: { origem: "whatsapp", funil: "f56" }
+},
+start_f57: {
+  event_name: "Start_F57",
+  extra_custom_data: { origem: "whatsapp", funil: "f57" }
+},
+start_f58: {
+  event_name: "Start_F58",
+  extra_custom_data: { origem: "whatsapp", funil: "f58" }
+},
+start_f59: {
+  event_name: "Start_F59",
+  extra_custom_data: { origem: "whatsapp", funil: "f59" }
+},
+start_f60: {
+  event_name: "Start_F60",
+  extra_custom_data: { origem: "whatsapp", funil: "f60" }
+},
+start_f61: {
+  event_name: "Start_F61",
+  extra_custom_data: { origem: "whatsapp", funil: "f61" }
+},
+start_f62: {
+  event_name: "Start_F62",
+  extra_custom_data: { origem: "whatsapp", funil: "f62" }
+},
+start_f63: {
+  event_name: "Start_F63",
+  extra_custom_data: { origem: "whatsapp", funil: "f63" }
+},
+start_f64: {
+  event_name: "Start_F64",
+  extra_custom_data: { origem: "whatsapp", funil: "f64" }
+},
+start_f65: {
+  event_name: "Start_F65",
+  extra_custom_data: { origem: "whatsapp", funil: "f65" }
+},
+start_f66: {
+  event_name: "Start_F66",
+  extra_custom_data: { origem: "whatsapp", funil: "f66" }
+},
+start_f67: {
+  event_name: "Start_F67",
+  extra_custom_data: { origem: "whatsapp", funil: "f67" }
+},
+start_f68: {
+  event_name: "Start_F68",
+  extra_custom_data: { origem: "whatsapp", funil: "f68" }
+},
+start_f69: {
+  event_name: "Start_F69",
+  extra_custom_data: { origem: "whatsapp", funil: "f69" }
+},
+start_f70: {
+  event_name: "Start_F70",
+  extra_custom_data: { origem: "whatsapp", funil: "f70" }
+},
+start_f71: {
+  event_name: "Start_F71",
+  extra_custom_data: { origem: "whatsapp", funil: "f71" }
+},
+start_f72: {
+  event_name: "Start_F72",
+  extra_custom_data: { origem: "whatsapp", funil: "f72" }
+},
+start_f73: {
+  event_name: "Start_F73",
+  extra_custom_data: { origem: "whatsapp", funil: "f73" }
+},
+start_f74: {
+  event_name: "Start_F74",
+  extra_custom_data: { origem: "whatsapp", funil: "f74" }
+},
+start_f75: {
+  event_name: "Start_F75",
+  extra_custom_data: { origem: "whatsapp", funil: "f75" }
+},
+start_f76: {
+  event_name: "Start_F76",
+  extra_custom_data: { origem: "whatsapp", funil: "f76" }
+},
+start_f77: {
+  event_name: "Start_F77",
+  extra_custom_data: { origem: "whatsapp", funil: "f77" }
+},
+start_f78: {
+  event_name: "Start_F78",
+  extra_custom_data: { origem: "whatsapp", funil: "f78" }
+},
+start_f79: {
+  event_name: "Start_F79",
+  extra_custom_data: { origem: "whatsapp", funil: "f79" }
+},
+start_f80: {
+  event_name: "Start_F80",
+  extra_custom_data: { origem: "whatsapp", funil: "f80" }
+},
+start_f81: {
+  event_name: "Start_F81",
+  extra_custom_data: { origem: "whatsapp", funil: "f81" }
+},
+start_f82: {
+  event_name: "Start_F82",
+  extra_custom_data: { origem: "whatsapp", funil: "f82" }
+},
+start_f83: {
+  event_name: "Start_F83",
+  extra_custom_data: { origem: "whatsapp", funil: "f83" }
+},
+start_f84: {
+  event_name: "Start_F84",
+  extra_custom_data: { origem: "whatsapp", funil: "f84" }
+},
+start_f85: {
+  event_name: "Start_F85",
+  extra_custom_data: { origem: "whatsapp", funil: "f85" }
+},
+start_f86: {
+  event_name: "Start_F86",
+  extra_custom_data: { origem: "whatsapp", funil: "f86" }
+},
+start_f87: {
+  event_name: "Start_F87",
+  extra_custom_data: { origem: "whatsapp", funil: "f87" }
+},
+start_f88: {
+  event_name: "Start_F88",
+  extra_custom_data: { origem: "whatsapp", funil: "f88" }
+},
+start_f89: {
+  event_name: "Start_F89",
+  extra_custom_data: { origem: "whatsapp", funil: "f89" }
+},
+start_f90: {
+  event_name: "Start_F90",
+  extra_custom_data: { origem: "whatsapp", funil: "f90" }
+},
+start_f91: {
+  event_name: "Start_F91",
+  extra_custom_data: { origem: "whatsapp", funil: "f91" }
+},
+start_f92: {
+  event_name: "Start_F92",
+  extra_custom_data: { origem: "whatsapp", funil: "f92" }
+},
+start_f93: {
+  event_name: "Start_F93",
+  extra_custom_data: { origem: "whatsapp", funil: "f93" }
+},
+start_f94: {
+  event_name: "Start_F94",
+  extra_custom_data: { origem: "whatsapp", funil: "f94" }
+},
+start_f95: {
+  event_name: "Start_F95",
+  extra_custom_data: { origem: "whatsapp", funil: "f95" }
+},
+start_f96: {
+  event_name: "Start_F96",
+  extra_custom_data: { origem: "whatsapp", funil: "f96" }
+},
+start_f97: {
+  event_name: "Start_F97",
+  extra_custom_data: { origem: "whatsapp", funil: "f97" }
+},
+start_f98: {
+  event_name: "Start_F98",
+  extra_custom_data: { origem: "whatsapp", funil: "f98" }
+},
+start_f99: {
+  event_name: "Start_F99",
+  extra_custom_data: { origem: "whatsapp", funil: "f99" }
+},
+start_f100: {
+  event_name: "Start_F100",
+  extra_custom_data: { origem: "whatsapp", funil: "f100" }
 },
 
   bilhete_eb: {
@@ -401,6 +756,13 @@ start_f03: {
   event_name: "Start_F09",
   extra_custom_data: { origem: "telegram", funil: "f09" }
 },
+
+  start_f12: {
+  event_name: "Start_F12",
+  extra_custom_data: { origem: "whatsapp", funil: "f12" }
+},
+
+  
 
 start_f04: {
   event_name: "Start_F04",
