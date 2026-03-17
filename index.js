@@ -278,7 +278,7 @@ async function dispararAlerta(mensagem) {
   try {
     // Exemplo de disparo via webhook (N8N ou Telegram Bot)
     /*
-    await fetch("SUA_URL_DO_WEBHOOK_AQUI", {
+    await fetch(https://discord.com/api/webhooks/1483464710409031690/bxhULJv3X7bfiOCpLeFi2CXLppMQwAtydZhD8Oy2KyJaf_TBV5sX47yE57x8LNyYUz3G, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: mensagem })
