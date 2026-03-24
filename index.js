@@ -1046,16 +1046,16 @@ async function sendToMeta(event, slotNumber = null) {
 
 async function saveLeadContext(data) {
   try {
-    const { lead_id, afp, fbp, fbc, fbclid, utm_source, utm_medium, utm_campaign, utm_content, client_ip_address, client_user_agent } = data;
+    const { lead_id, afp, fbp, fbc, fbclid, phone, email, utm_source, utm_medium, utm_campaign, utm_content, client_ip_address, client_user_agent } = data;
     if (!lead_id) {
         console.warn("⚠️ [saveLeadContext] Tentativa de salvar contexto sem lead_id. Pulando.");
         return null;
     }
     const saved = await prisma.leadContext.upsert({
-      where: { lead_id },
-      update: { afp, fbp, fbc, fbclid, utm_source, utm_medium, utm_campaign, utm_content, client_ip_address, client_user_agent },
-      create: { lead_id, afp, fbp, fbc, fbclid, utm_source, utm_medium, utm_campaign, utm_content, client_ip_address, client_user_agent },
-    });
+    where: { lead_id },
+    update: { afp, fbp, fbc, fbclid, phone, email, utm_source, utm_medium, utm_campaign, utm_content, client_ip_address, client_user_agent },
+    create: { lead_id, afp, fbp, fbc, fbclid, phone, email, utm_source, utm_medium, utm_campaign, utm_content, client_ip_address, client_user_agent },
+});
     // Log de sucesso removido para não poluir, o importante é o erro.
     return saved;
   } catch (err) {
@@ -1144,18 +1144,20 @@ app.post("/sp/event", async (req, res) => {
     
     if (finalLeadId) {
         await saveLeadContext({
-          lead_id: finalLeadId, 
-          afp: finalLeadId,
-          fbp: cleanStr(vars.fbp), 
-          fbc: cleanStr(vars.fbc), 
-          fbclid: cleanStr(vars.fbclid),
-          utm_source: cleanStr(vars.utm_source),
-          utm_medium: cleanStr(vars.utm_medium),
-          utm_campaign: cleanStr(vars.utm_campaign),
-          utm_content: cleanStr(vars.utm_content),
-          client_ip_address: getClientIp(req), 
-          client_user_agent: getUserAgent(req)
-        });
+    lead_id: finalLeadId, 
+    afp: finalLeadId,
+    fbp: cleanStr(vars.fbp), 
+    fbc: cleanStr(vars.fbc), 
+    fbclid: cleanStr(vars.fbclid),
+    phone: normalizePhone(vars.phone || vars.ph || vars.whatsapp),   // ← NOVO
+    email: normalizeEmail(vars.email || vars.em),                     // ← NOVO
+    utm_source: cleanStr(vars.utm_source),
+    utm_medium: cleanStr(vars.utm_medium),
+    utm_campaign: cleanStr(vars.utm_campaign),
+    utm_content: cleanStr(vars.utm_content),
+    client_ip_address: getClientIp(req), 
+    client_user_agent: getUserAgent(req)
+});
     } else {
         // Silenciado para não fazer spam no terminal
         // console.warn("⚠️ [saveLeadContext] Tentativa de salvar contexto sem lead_id. Pulando.");
@@ -1663,12 +1665,14 @@ app.all("/superbet", async (req, res) => {
       action_source: "website",
       event_id: event_id,
       user_data: {
-        client_ip_address: context?.client_ip_address || getClientIp(req),
-        client_user_agent: context?.client_user_agent || getUserAgent(req),
-        fbp: context?.fbp || undefined,
-        fbc: context?.fbc || undefined,
-        external_id: [sha256(leadId)] 
-      },
+    client_ip_address: context?.client_ip_address || getClientIp(req),
+    client_user_agent: context?.client_user_agent || getUserAgent(req),
+    fbp: context?.fbp || undefined,
+    fbc: context?.fbc || (context?.fbclid ? `fb.1.${Date.now()}.${context.fbclid}` : undefined),
+    ph: context?.phone ? [sha256(normalizePhone(context.phone))] : undefined,
+    em: context?.email ? [sha256(normalizeEmail(context.email))] : undefined,
+    external_id: [sha256(leadId)] 
+},
       custom_data: {
         origem: "superbet",
         currency: currency,
@@ -1733,12 +1737,15 @@ app.all("/superbet/ftd", async (req, res) => {
       action_source: "website",
       event_id: event_id,
       user_data: {
-        client_ip_address: context?.client_ip_address || getClientIp(req),
-        client_user_agent: context?.client_user_agent || getUserAgent(req),
-        fbp: context?.fbp,
-        fbc: context?.fbc,
-        external_id: [sha256(leadId)]
-      },
+        user_data: {
+    client_ip_address: context?.client_ip_address || getClientIp(req),
+    client_user_agent: context?.client_user_agent || getUserAgent(req),
+    fbp: context?.fbp || undefined,
+    fbc: context?.fbc || (context?.fbclid ? `fb.1.${Date.now()}.${context.fbclid}` : undefined),
+    ph: context?.phone ? [sha256(normalizePhone(context.phone))] : undefined,
+    em: context?.email ? [sha256(normalizeEmail(context.email))] : undefined,
+    external_id: [sha256(leadId)] 
+},
       custom_data: { 
         origem: "superbet", 
         value: value, 
