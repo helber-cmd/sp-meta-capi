@@ -1096,6 +1096,10 @@ app.post("/sp/event", async (req, res) => {
     }
 
     const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
+    
+    //  LINHA TEMPORÁRIA:
+console.log("🔬 [DEBUG SP] vars recebidas:", JSON.stringify(vars, null, 2));
+    
     const event = buildSendPulseEvent({ cfg, vars, telegram_id, req });
     
     // console.log(`🚀 [ROTA /sp/event] Recebido: ${eventKey}. Enviando para Meta...`);
