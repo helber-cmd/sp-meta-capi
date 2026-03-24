@@ -465,12 +465,25 @@ start_f03: {
   extra_custom_data: { origem: "whatsapp", funil: "f01" }
 },
 
-   start_f01_03: {
-  event_name: "start_f01_03",
+   start_f01_3: {
+  event_name: "start_f01_3",
   extra_custom_data: { origem: "whatsapp", funil: "f01_03" }
 },
 
+  start_f01_lp2: {
+  event_name: "start_f01_lp2",
+  extra_custom_data: { origem: "whatsapp", funil: "f01_lp2" }
+},
   
+   bilhete_eb: {
+  event_name: "bilhete_eb",
+  extra_custom_data: { origem: "sendpulse", funil: "bilhete_eb" }
+},
+  
+  bilhete_eb: {
+  event_name: "lead_comunidadewpp_f01_3",
+  extra_custom_data: { origem: "whatsapp", funil: "lead_comunidadewpp_f01_3" }
+},
 
   start_f01_02: {
   event_name: "start_f01_02",
