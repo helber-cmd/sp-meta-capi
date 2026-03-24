@@ -890,23 +890,42 @@ function normalizeEmail(email) { if (!email) return ""; return String(email).tri
 function normalizePhone(phone) { if (!phone) return ""; return String(phone).replace(/\D+/g, ""); }
 function getItem(body) { return Array.isArray(body) ? body[0] : body; }
 
-function extractLeadVars(body) {
-  const item = getItem(body);
+function extractLeadVars(req) {
+  // Pega tanto o corpo do Webhook quanto as variáveis na URL
+  const body = req.body || {};
+  const q = req.query || {};
+  const item = Array.isArray(body) ? body[0] : body;
   
   let vars = {};
-  const rawVars = item?.contact?.variables || item?.variables || item?.contact?.last_message_data?.message?.tracking_data?.contact_variables || {};
 
-  if (Array.isArray(rawVars)) {
-      rawVars.forEach(v => {
-          if (v.name) vars[v.name.toLowerCase()] = v.value;
-      });
-  } else if (typeof rawVars === 'object' && rawVars !== null) {
-      for (let k in rawVars) {
-          vars[k.toLowerCase()] = rawVars[k];
-      }
+  // 1. Fallback de Segurança: Suga tudo que vier na URL primeiro
+  for (let k in q) {
+      vars[k.toLowerCase()] = q[k];
   }
 
-  const contact_id = item?.contact?.id || item?.contact?.last_message_data?.chat_id || item?.contact?.phone || "";
+  // 2. Os Caminhos exatos que o seu Dev encontrou no Log
+  const contactVars = item?.contact?.variables || {};
+  const trackingVars = item?.contact?.last_message_data?.message?.tracking_data?.contact_variables || {};
+
+  // 3. Função blindada para sugar os dados (Não quebra se vier Array ou Objeto)
+  const sugarDados = (gaveta) => {
+      if (Array.isArray(gaveta)) {
+          gaveta.forEach(v => {
+              if (v.name && v.value !== undefined) vars[v.name.toLowerCase()] = v.value;
+          });
+      } else if (typeof gaveta === 'object' && gaveta !== null) {
+          for (let k in gaveta) {
+              if (gaveta[k] !== undefined) vars[k.toLowerCase()] = gaveta[k];
+          }
+      }
+  };
+
+  // 4. Executa a extração: a segunda gaveta sobrescreve a primeira se tiver dados mais ricos (fbp/fbc)
+  sugarDados(contactVars);
+  sugarDados(trackingVars);
+
+  // 5. Pega o ID do WhatsApp
+  const contact_id = item?.contact?.id || item?.contact?.last_message_data?.chat_id || item?.contact?.phone || q.contact_id || "";
   
   return { vars, contact_id: safeString(contact_id) };
 }
@@ -1110,7 +1129,7 @@ app.post("/sp/event", async (req, res) => {
     }
 
     // O NOVO ASPIRADOR: Usando o extrator blindado pro WhatsApp
-    const { vars, contact_id } = extractLeadVars(req.body);
+   const { vars, contact_id } = extractLeadVars(req);
 
     console.log("🔬 [DEBUG BODY COMPLETO]:", JSON.stringify(req.body, null, 2).substring(0, 2000));
     
@@ -1167,8 +1186,8 @@ async function compatHandler(req, res, key) {
     }
 
     const slotNumber = EVENT_SLOT_MAP[key] || null;
-    const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
-    const event = buildSendPulseEvent({ cfg, vars, telegram_id, req });
+    const { vars, contact_id } = extractLeadVars(req);
+    const event = buildSendPulseEvent({ cfg, vars, contact_id, req });
 
     // console.log(`🚀 [ROTA DE COMPATIBILIDADE] Recebido em /sp/${key}. Enviando para Meta...`);
     const metaResp = await sendToMeta(event, slotNumber);
