@@ -14,6 +14,10 @@ model LeadContext {
   fbp       String?
   fbc       String?
   fbclid    String?
+  // PII para advanced matching
+  phone     String?
+  email     String?
+  // utms
   // utms
   utm_source   String?
   utm_medium   String?
