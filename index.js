@@ -1131,7 +1131,7 @@ app.post("/sp/event", async (req, res) => {
     // O NOVO ASPIRADOR: Usando o extrator blindado pro WhatsApp
    const { vars, contact_id } = extractLeadVars(req);
 
-    console.log("🔬 [DEBUG BODY COMPLETO]:", JSON.stringify(req.body, null, 2).substring(0, 2000));
+    // console.log("🔬 [DEBUG BODY COMPLETO]:", JSON.stringify(req.body, null, 2).substring(0, 2000));
     
     // DEBUG: Mostra o que ele sugou! Vai provar se a SendPulse enviou o FBP e FBC.
     console.log(`🔬 [DEBUG SP] Evento: ${eventKey} | FBP: ${!!vars.fbp} | FBC: ${!!vars.fbc} | LEAD_ID: ${vars.lead_id}`);
