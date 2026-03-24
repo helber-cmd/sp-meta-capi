@@ -1736,16 +1736,15 @@ app.all("/superbet/ftd", async (req, res) => {
       event_time: Math.floor(Date.now()/1000),
       action_source: "website",
       event_id: event_id,
-      user_data: {
-        user_data: {
-    client_ip_address: context?.client_ip_address || getClientIp(req),
-    client_user_agent: context?.client_user_agent || getUserAgent(req),
-    fbp: context?.fbp || undefined,
-    fbc: context?.fbc || (context?.fbclid ? `fb.1.${Date.now()}.${context.fbclid}` : undefined),
-    ph: context?.phone ? [sha256(normalizePhone(context.phone))] : undefined,
-    em: context?.email ? [sha256(normalizeEmail(context.email))] : undefined,
-    external_id: [sha256(leadId)] 
-},
+     user_data: {
+        client_ip_address: context?.client_ip_address || getClientIp(req),
+        client_user_agent: context?.client_user_agent || getUserAgent(req),
+        fbp: context?.fbp || undefined,
+        fbc: context?.fbc || (context?.fbclid ? `fb.1.${Date.now()}.${context.fbclid}` : undefined),
+        ph: context?.phone ? [sha256(normalizePhone(context.phone))] : undefined,
+        em: context?.email ? [sha256(normalizeEmail(context.email))] : undefined,
+        external_id: [sha256(leadId)] 
+      },
       custom_data: { 
         origem: "superbet", 
         value: value, 
