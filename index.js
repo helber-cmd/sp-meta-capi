@@ -890,12 +890,25 @@ function normalizeEmail(email) { if (!email) return ""; return String(email).tri
 function normalizePhone(phone) { if (!phone) return ""; return String(phone).replace(/\D+/g, ""); }
 function getItem(body) { return Array.isArray(body) ? body[0] : body; }
 
-function extractVarsAndTelegramId(body) {
+function extractLeadVars(body) {
   const item = getItem(body);
-  const vars = item?.contact?.variables || item?.contact?.last_message_data?.message?.tracking_data?.contact_variables || {};
-  const telegram_id = item?.contact?.telegram_id || item?.contact?.last_message_data?.chat_id || item?.contact?.last_message_data?.telegram_id || "";
-  const title = item?.title || item?.service || "";
-  return { item, vars, telegram_id: safeString(telegram_id), title: safeString(title) };
+  
+  let vars = {};
+  const rawVars = item?.contact?.variables || item?.variables || item?.contact?.last_message_data?.message?.tracking_data?.contact_variables || {};
+
+  if (Array.isArray(rawVars)) {
+      rawVars.forEach(v => {
+          if (v.name) vars[v.name.toLowerCase()] = v.value;
+      });
+  } else if (typeof rawVars === 'object' && rawVars !== null) {
+      for (let k in rawVars) {
+          vars[k.toLowerCase()] = rawVars[k];
+      }
+  }
+
+  const contact_id = item?.contact?.id || item?.contact?.last_message_data?.chat_id || item?.contact?.phone || "";
+  
+  return { vars, contact_id: safeString(contact_id) };
 }
 
 function getClientIp(req) {
@@ -1045,7 +1058,7 @@ async function getLeadContextByAfp(afp) {
 }
 
 // --- FUNÇÃO QUE ESTAVA FALTANDO ---
-function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
+function buildSendPulseEvent({ cfg, vars, contact_id, req }) {
   const email = normalizeEmail(vars.email || vars.em);
   const phone = normalizePhone(vars.phone || vars.ph || vars.whatsapp);
   const client_ip = getClientIp(req);
@@ -1053,10 +1066,10 @@ function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
   const fbp = cleanStr(vars.fbp);
   const fbc = cleanStr(vars.fbc);
   
-  // Cria ID único para dedup
+  // Cria ID único para dedup usando o contact_id do WhatsApp
   const event_id = vars.lead_id 
     ? `${vars.lead_id}_${cfg.event_name}` 
-    : `sp_${telegram_id || Date.now()}_${cfg.event_name}`;
+    : `sp_${contact_id || Date.now()}_${cfg.event_name}`;
 
   return {
     event_name: cfg.event_name,
@@ -1070,51 +1083,62 @@ function buildSendPulseEvent({ cfg, vars, telegram_id, req }) {
       client_user_agent: client_ua,
       fbp: fbp,
       fbc: fbc,
-      external_id: telegram_id ? [sha256(telegram_id)] : undefined
+      external_id: contact_id ? [sha256(contact_id)] : undefined
     },
     custom_data: {
       ...cfg.extra_custom_data,
       lead_id: vars.lead_id,
-      telegram_id: telegram_id,
+      contact_id: contact_id,
       origem_url: vars.origem_url
     }
   };
 }
+
 // =========================
 // SENDPULSE -> META
 // =========================
 app.post("/sp/event", async (req, res) => {
   try {
-    const eventKey = safeString(req.query.e || req.query.event).toLowerCase().trim(); // Corrigido e com .trim()
+    const eventKey = safeString(req.query.e || req.query.event).toLowerCase().trim(); 
     const slotNumber = parseInt(req.query.slot) || EVENT_SLOT_MAP[eventKey] || null;
     
     const cfg = EVENT_MAP[eventKey];
     if (!cfg) {
-        // Adicionando log para eventos não mapeados para facilitar a depuração
-        console.warn(`⚠️ [ROTA /sp/event] Evento não mapeado recebido: "${eventKey}"`);
+        // Silenciado para não poluir
+        // console.warn(`⚠️ [ROTA /sp/event] Evento não mapeado recebido: "${eventKey}"`);
         return res.status(400).json({ ok: false, error: "EVENT_NOT_MAPPED" });
     }
 
-    const { vars, telegram_id } = extractVarsAndTelegramId(req.body);
+    // O NOVO ASPIRADOR: Usando o extrator blindado pro WhatsApp
+    const { vars, contact_id } = extractLeadVars(req.body);
     
-    //  LINHA TEMPORÁRIA:
-console.log("🔬 [DEBUG SP] vars recebidas:", JSON.stringify(vars, null, 2));
+    // DEBUG: Mostra o que ele sugou! Vai provar se a SendPulse enviou o FBP e FBC.
+    console.log(`🔬 [DEBUG SP] Evento: ${eventKey} | FBP: ${!!vars.fbp} | FBC: ${!!vars.fbc} | LEAD_ID: ${vars.lead_id}`);
+
+    const event = buildSendPulseEvent({ cfg, vars, contact_id, req });
     
-    const event = buildSendPulseEvent({ cfg, vars, telegram_id, req });
-    
-    // console.log(`🚀 [ROTA /sp/event] Recebido: ${eventKey}. Enviando para Meta...`);
     const metaResp = await sendToMeta(event, slotNumber);
     
-    saveLeadContext({
-      lead_id: vars.lead_id || event.custom_data?.lead_id, 
-      afp: vars.lead_id || event.custom_data?.lead_id,
-      fbp: cleanStr(vars.fbp), 
-      fbc: cleanStr(vars.fbc), 
-      fbclid: cleanStr(vars.fbclid),
-      utm_source: cleanStr(vars.utm_source), 
-      client_ip_address: getClientIp(req), 
-      client_user_agent: getUserAgent(req)
-    });
+    const finalLeadId = cleanStr(vars.lead_id) || cleanStr(event.custom_data?.lead_id);
+    
+    if (finalLeadId) {
+        await saveLeadContext({
+          lead_id: finalLeadId, 
+          afp: finalLeadId,
+          fbp: cleanStr(vars.fbp), 
+          fbc: cleanStr(vars.fbc), 
+          fbclid: cleanStr(vars.fbclid),
+          utm_source: cleanStr(vars.utm_source),
+          utm_medium: cleanStr(vars.utm_medium),
+          utm_campaign: cleanStr(vars.utm_campaign),
+          utm_content: cleanStr(vars.utm_content),
+          client_ip_address: getClientIp(req), 
+          client_user_agent: getUserAgent(req)
+        });
+    } else {
+        // Silenciado para não fazer spam no terminal
+        // console.warn("⚠️ [saveLeadContext] Tentativa de salvar contexto sem lead_id. Pulando.");
+    }
 
     await prisma.eventLog.create({ 
       data: { type: event.event_name, provider: "sendpulse" } 
