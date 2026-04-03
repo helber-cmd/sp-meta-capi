@@ -382,7 +382,7 @@ const EVENT_SLOT_MAP = {
 
   bilhete_esportivabet2: 4, 
 
-  bilhete_mgm: 5,
+  bilhete_mgm:
 
 
 
