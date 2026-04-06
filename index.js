@@ -1801,7 +1801,9 @@ app.all("/mgm/postback", async (req, res) => {
     // 3. Dedupe blindado
     const event_id = `mgm_${clickId || crypto.randomUUID()}_${metaEventName}`;
 
-    console.log(`🔑 [MGM] Evento: ${metaEventName} | click_id: ${clickId} | pid: ${pubId} | fbp: ${!!fbp} | fbc: ${!!fbc}`);
+    const PIDS_NOSSOS = ["10367","10482","10483","10583","10584","10585","10586","10587","10588","12274","12275","12276","12277","12278","12279"];
+const isNosso = PIDS_NOSSOS.includes(pubId);
+console.log(`🔑 [MGM] ${isNosso ? "🟢 NOSSO" : "⚪ OUTROS"} | Evento: ${metaEventName} | pid: ${pubId} | click_id: ${clickId} | fbp: ${!!fbp} | fbc: ${!!fbc}`);
 
     // 4. Monta o evento pro Meta
     const event = {
