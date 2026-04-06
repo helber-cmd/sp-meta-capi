@@ -1796,7 +1796,7 @@ app.all("/mgm/postback", async (req, res) => {
     const clientIp = cleanStr(q.client_ip) || getClientIp(req);
     const userAgent = cleanStr(q.user_agent) || getUserAgent(req);
     const value = parseValue(q.value) || parseValue(q.amount) || (isFtd ? 30 : 0);
-    const pubId = cleanStr(q.pub_id);
+    const pubId = cleanStr(q.pid) || cleanStr(q.pub_id);
 
     // 3. Dedupe blindado
     const event_id = `mgm_${clickId || crypto.randomUUID()}_${metaEventName}`;
