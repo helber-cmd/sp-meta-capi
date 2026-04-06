@@ -1756,6 +1756,93 @@ app.all("/superbet/ftd", async (req, res) => {
     res.status(500).json({ error: e.message }); 
   }
 });
+// =====================================================================
+// MGM POSTBACK (N8N) - SLOT 6
+// =====================================================================
+app.all("/mgm/postback", async (req, res) => {
+  try {
+    const q = { ...req.query, ...req.body };
+
+    console.log("\n---------------------------------------------------------");
+    console.log(`🎲 [MGM] Postback recebido via ${req.method}.`);
+    console.log("🔗 URL CRUA:", req.originalUrl);
+    console.log("📦 DADOS BRUTOS (MGM):", JSON.stringify(q, null, 2));
+
+    // 1. Identifica o evento
+    const evType = safeString(q.ev || q.event || q.event_name || "").toLowerCase().trim();
+    let metaEventName = "";
+    let isFtd = false;
+
+    if (evType === "lead" || evType === "start") {
+        metaEventName = "Lead_MGM";
+    } else if (evType === "reg" || evType === "registro" || evType === "registration") {
+        metaEventName = "Registro_MGM";
+    } else if (evType === "ftd" || evType === "purchase" || evType === "deposit") {
+        metaEventName = "FTD_MGM";
+        isFtd = true;
+    } else {
+        console.log(`⚠️ [MGM] Evento não mapeado: "${evType}"`);
+        return res.json({ ok: true, reason: "event_not_mapped", ev: evType });
+    }
+
+    // 2. Dados do n8n (já vêm mapeados)
+    const fbp = cleanStr(q.fbp);
+    const fbc = cleanStr(q.fbc);
+    const fbclid = cleanStr(q.fbclid);
+    const clickId = cleanStr(q.click_id);
+    const clientIp = cleanStr(q.client_ip) || getClientIp(req);
+    const userAgent = cleanStr(q.user_agent) || getUserAgent(req);
+    const value = parseValue(q.value) || parseValue(q.amount) || (isFtd ? 30 : 0);
+    const pubId = cleanStr(q.pub_id);
+
+    // 3. Dedupe blindado
+    const event_id = `mgm_${clickId || crypto.randomUUID()}_${metaEventName}`;
+
+    console.log(`🔑 [MGM] Evento: ${metaEventName} | click_id: ${clickId} | fbp: ${!!fbp} | fbc: ${!!fbc}`);
+
+    // 4. Monta o evento pro Meta
+    const event = {
+      event_name: metaEventName,
+      event_time: Math.floor(Date.now() / 1000),
+      action_source: "website",
+      event_id: event_id,
+      user_data: {
+        client_ip_address: clientIp,
+        client_user_agent: userAgent,
+        fbp: fbp || undefined,
+        fbc: fbc || (fbclid ? `fb.1.${Date.now()}.${fbclid}` : undefined),
+        external_id: clickId ? [sha256(clickId)] : undefined
+      },
+      custom_data: {
+        origem: "mgm",
+        value: isFtd ? value : undefined,
+        currency: isFtd ? "BRL" : undefined,
+        click_id: clickId,
+        pub_id: pubId
+      }
+    };
+
+    // 5. Envia pro Meta (Master + Slot 6)
+    const metaResp = await sendToMeta(event, 6);
+    console.log(`🚀 [MGM] Processado: ${metaEventName} | Slot 6`);
+
+    // 6. Dashboard
+    await prisma.eventLog.create({
+      data: {
+        type: isFtd ? "ftd" : (evType === "reg" || evType === "registro" || evType === "registration") ? "registro" : "lead",
+        provider: "mgm",
+        extra: pubId || "direto"
+      }
+    }).catch(e => console.error("Erro ao salvar MGM no banco:", e.message));
+
+    res.json({ ok: true, meta: metaResp });
+
+  } catch (err) {
+    console.error("❌ [ERRO MGM]:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // =========================
 // FACEBOOK ADS METRICS (N8N)
 // =========================
