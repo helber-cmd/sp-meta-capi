@@ -1780,6 +1780,9 @@ app.all("/mgm/postback", async (req, res) => {
     } else if (evType === "ftd" || evType === "purchase" || evType === "deposit") {
         metaEventName = "FTD_MGM";
         isFtd = true;
+      } else if (evType === "ftd" || evType === "purchase" || evType === "deposit") {
+    metaEventName = "FTD_MGM";
+    isFtd = true;
     } else {
         console.log(`⚠️ [MGM] Evento não mapeado: "${evType}"`);
         return res.json({ ok: true, reason: "event_not_mapped", ev: evType });
