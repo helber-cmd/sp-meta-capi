@@ -1796,14 +1796,16 @@ app.all("/mgm/postback", async (req, res) => {
     const clientIp = cleanStr(q.client_ip) || getClientIp(req);
     const userAgent = cleanStr(q.user_agent) || getUserAgent(req);
     const value = parseValue(q.value) || parseValue(q.amount) || (isFtd ? 30 : 0);
-    const pubId = cleanStr(q.pid) || cleanStr(q.pub_id);
 
     // 3. Dedupe blindado
     const event_id = `mgm_${clickId || crypto.randomUUID()}_${metaEventName}`;
 
-    const PIDS_NOSSOS = ["10367","10482","10483","10583","10584","10585","10586","10587","10588","12274","12275","12276","12277","12278","12279"];
-const isNosso = PIDS_NOSSOS.includes(pubId);
-console.log(`🔑 [MGM] ${isNosso ? "🟢 NOSSO" : "⚪ OUTROS"} | Evento: ${metaEventName} | pid: ${pubId} | click_id: ${clickId} | fbp: ${!!fbp} | fbc: ${!!fbc}`);
+    const pubId = cleanStr(q.pid) || cleanStr(q.pub_id);
+const PIDS_NOSSOS = ["10367","10482","10483","10583","10584","10585","10586","10587","10588","12274","12275","12276","12277","12278","12279"];
+
+if (PIDS_NOSSOS.includes(pubId)) {
+    console.log(`🔑 [MGM] Evento: ${metaEventName} | pid: ${pubId} | click_id: ${clickId} | fbp: ${!!fbp} | fbc: ${!!fbc}`);
+}
 
     // 4. Monta o evento pro Meta
     const event = {
