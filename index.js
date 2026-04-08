@@ -67,6 +67,7 @@
 // META_PIXEL_SLOT3 / META_TOKEN_SLOT3    -> Esportivabet Pixel 1 (Deles)
 // META_PIXEL_SLOT4 / META_TOKEN_SLOT4    -> Esportivabet Pixel 2
 // META_PIXEL_SLOT5 / META_TOKEN_SLOT5    -> SuperBet Isolado
+// META_PIXEL_SLOT7 / META_TOKEN_SLOT7    -> MGM Teste (Match pelo fbp)
 // =====================================================================
 
 import express from "express";
@@ -368,6 +369,7 @@ const PIXEL_SLOTS = {
   4: { id: process.env.META_PIXEL_SLOT4, token: process.env.META_TOKEN_SLOT4, name: "Cassino" },
   5: { id: process.env.META_PIXEL_SLOT5, token: process.env.META_TOKEN_SLOT5, name: "Superbet" },
   6: { id: process.env.META_PIXEL_SLOT6, token: process.env.META_TOKEN_SLOT6, name: "MGM" },
+  7: { id: process.env.META_PIXEL_SLOT7, token: process.env.META_TOKEN_SLOT7, name: "MGM_Teste" },
 };
 
 const EVENT_SLOT_MAP = {
@@ -1796,7 +1798,22 @@ app.all("/mgm/postback", async (req, res) => {
     const clientIp = cleanStr(q.client_ip) || getClientIp(req);
     const userAgent = cleanStr(q.user_agent) || getUserAgent(req);
     const value = parseValue(q.value) || parseValue(q.amount) || (isFtd ? 30 : 0);
+    
+   // 2.5 MATCH PELO FBP (busca contexto do lead no banco) | mgm 
+    let context = null;
+    if (fbp && !fbp.startsWith("meta_")) {
+        context = await prisma.leadContext.findFirst({ where: { fbp: fbp } });
+        if (context) {
+            console.log(`✅ [MGM] MATCH pelo FBP! lead_id: ${context.lead_id} | phone: ${!!context.phone}`);
+        }
+    }
 
+    // Se não deu match, não envia pro Meta
+    if (!context) {
+        console.log(`🚫 [MGM] Sem match no banco. Evento não enviado pro Meta.`);
+        return res.json({ ok: true, filtered: true, reason: "no_match" });
+    }
+    
     // 3. Dedupe blindado
     const event_id = `mgm_${clickId || crypto.randomUUID()}_${metaEventName}`;
 
@@ -1814,11 +1831,13 @@ if (PIDS_NOSSOS.includes(pubId)) {
       action_source: "website",
       event_id: event_id,
       user_data: {
-        client_ip_address: clientIp,
-        client_user_agent: userAgent,
+        client_ip_address: context.client_ip_address || clientIp,
+        client_user_agent: context.client_user_agent || userAgent,
         fbp: fbp || undefined,
-        fbc: fbc || (fbclid ? `fb.1.${Date.now()}.${fbclid}` : undefined),
-        external_id: clickId ? [sha256(clickId)] : undefined
+        fbc: fbc || context.fbc || (context.fbclid ? `fb.1.${Date.now()}.${context.fbclid}` : undefined),
+        ph: context.phone ? [sha256(normalizePhone(context.phone))] : undefined,
+        em: context.email ? [sha256(normalizeEmail(context.email))] : undefined,
+        external_id: context.lead_id ? [sha256(context.lead_id)] : (clickId ? [sha256(clickId)] : undefined)
       },
       custom_data: {
         origem: "mgm",
@@ -1830,8 +1849,10 @@ if (PIDS_NOSSOS.includes(pubId)) {
     };
 
     // 5. Envia pro Meta (Master + Slot 6)
-    const metaResp = await sendToMeta(event, 6);
-    console.log(`🚀 [MGM] Processado: ${metaEventName} | Slot 6`);
+    const metaResp6 = await sendToMeta(event, 6);
+const metaResp7 = await sendToMeta(event, 7);
+const metaResp = { slot6: metaResp6, slot7: metaResp7 };
+console.log(`🚀 [MGM] Processado: ${metaEventName} | Slot 6 + Slot 7`);
 
     // 6. Dashboard
     await prisma.eventLog.create({
