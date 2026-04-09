@@ -1626,11 +1626,11 @@ app.all("/superbet", async (req, res) => {
     console.log(`🔍 [SUPERBET] ID Completo para Match: "${leadId}"`);
     
     // 3. Validação de Segurança (Só verifica se tem UUID no meio, sem cortar)
-    const contemUUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(leadId);
+   const contemUUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(leadId);
     if (!contemUUID) {
-        if (!contemUUID) {
         console.log(`🚫 [SUPERBET] Bloqueado. acid/cid recebido: "${leadId}" | Todos params: ${JSON.stringify(q)}`);
         return res.json({ ok: true, filtered: true, reason: "invalid_id_format" });
+    }
     }
     // 4. Busca no Banco com a string COMPLETA
     const context = await getLeadContextByAfp(leadId); 
