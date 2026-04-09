@@ -1631,7 +1631,6 @@ app.all("/superbet", async (req, res) => {
         console.log(`🚫 [SUPERBET] Bloqueado. acid/cid recebido: "${leadId}" | Todos params: ${JSON.stringify(q)}`);
         return res.json({ ok: true, filtered: true, reason: "invalid_id_format" });
     }
-    }
     // 4. Busca no Banco com a string COMPLETA
     const context = await getLeadContextByAfp(leadId); 
 
