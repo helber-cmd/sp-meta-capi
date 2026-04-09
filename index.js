@@ -1609,8 +1609,7 @@ app.all("/superbet", async (req, res) => {
     console.log("\n---------------------------------------------------------");
     console.log(`💰 [SUPERBET PRINCIPAL] Postback recebido via ${req.method}.`);
     
-    console.log("🔗 URL CRUA:", req.originalUrl);
-    console.log("📦 TODOS OS DADOS BRUTOS:", JSON.stringify(q, null, 2));
+    console.log("📦 HEADERS SUPERBET:", JSON.stringify(req.headers, null, 2).substring(0, 500));
     
     const etType = safeString(q.et).toLowerCase().trim();
     let metaEventName = "Superbet_Registro"; 
@@ -1629,10 +1628,10 @@ app.all("/superbet", async (req, res) => {
     // 3. Validação de Segurança (Só verifica se tem UUID no meio, sem cortar)
     const contemUUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(leadId);
     if (!contemUUID) {
-        console.log(`🚫 [SUPERBET] Bloqueado: A string não contém um formato válido de UUID.`);
+        if (!contemUUID) {
+        console.log(`🚫 [SUPERBET] Bloqueado. acid/cid recebido: "${leadId}" | Todos params: ${JSON.stringify(q)}`);
         return res.json({ ok: true, filtered: true, reason: "invalid_id_format" });
     }
-
     // 4. Busca no Banco com a string COMPLETA
     const context = await getLeadContextByAfp(leadId); 
 
