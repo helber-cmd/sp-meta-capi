@@ -1768,6 +1768,13 @@ app.all("/mgm/postback", async (req, res) => {
     console.log("🔗 URL CRUA:", req.originalUrl);
     console.log("📦 DADOS BRUTOS (MGM):", JSON.stringify(q, null, 2));
 
+    // Encaminha para o servidor 3CGG(lucas)
+    fetch("https://3cgg-tracking-api-production.up.railway.app/betmgm/postback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(q)
+    }).catch(e => console.error("❌ [3CGG] Erro ao encaminhar:", e.message));
+
     // 1. Identifica o evento
     const evType = safeString(q.ev || q.event || q.event_name || "").toLowerCase().trim();
     let metaEventName = "";
