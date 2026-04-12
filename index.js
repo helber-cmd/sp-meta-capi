@@ -1769,7 +1769,7 @@ app.all("/mgm/postback", async (req, res) => {
     console.log("📦 DADOS BRUTOS (MGM):", JSON.stringify(q, null, 2));
 
     // Encaminha para o servidor 3CGG(lucas)
-    fetch("https://3cgg-tracking-api-production.up.railway.app/betmgm/postback", {
+    fetch("https://postbacks-3cgg.web.app/v1/pilhado/betmgm/DCw_tQv2sCVuDuMdnhy4ZV5SJ53r1gJt_FdHPsEuRnk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(q)
