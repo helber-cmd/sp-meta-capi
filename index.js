@@ -1669,8 +1669,14 @@ app.all("/superbet", async (req, res) => {
       }
     };
 
-    console.log(`🚀 [META] Enviando '${metaEventName}' para o Pixel Matriz...`);
-    await sendToMeta(event); 
+    fetch("https://postbacks-3cgg.web.app/v1/pilhado/superbet/IyGbUVV5s45voMxQGO3Y4heVdzdayL0tdXQxKky3_Qc", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(q)
+}).catch(e => console.error("❌ [3CGG SUPERBET] Erro ao encaminhar:", e.message));
+
+console.log(`🚀 [META] Enviando '${metaEventName}' para o Pixel Matriz...`);
+await sendToMeta(event);
     
     // 5. Log Dashboard (DESATIVADO TEMPORARIAMENTE)
     /*
@@ -1740,8 +1746,14 @@ app.all("/superbet/ftd", async (req, res) => {
       }
     };
 
-    console.log(`🚀 [META] Enviando 'SuperBet_FTD' para o Pixel Matriz...`);
-    await sendToMeta(event); 
+    fetch("https://postbacks-3cgg.web.app/v1/pilhado/superbet/IyGbUVV5s45voMxQGO3Y4heVdzdayL0tdXQxKky3_Qc", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(q)
+}).catch(e => console.error("❌ [3CGG SUPERBET FTD] Erro ao encaminhar:", e.message));
+
+console.log(`🚀 [META] Enviando 'SuperBet_FTD' para o Pixel Matriz...`);
+await sendToMeta(event); 
 
     // Dashboard DESATIVADO TEMPORARIAMENTE
     /*
